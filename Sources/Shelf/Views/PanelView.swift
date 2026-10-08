@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 /// The panel's content. The window around it is resized by `PanelController`; each
-/// state's content keeps its own width and is pinned to the trailing edge, so it's
+/// state's content keeps its own width and is pinned to the docked edge, so it's
 /// revealed rather than squeezed while the window animates.
 struct PanelView: View {
     @Environment(ShelfStore.self) private var store
@@ -14,21 +14,28 @@ struct PanelView: View {
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
-        ZStack(alignment: .trailing) {
+        // Content hugs the docked edge, so it's revealed toward the middle of the screen.
+        let alignment: Alignment = panel.edge == .left ? .leading : .trailing
+        ZStack(alignment: alignment) {
             switch panel.mode {
             case .resting:
                 RestingPill(items: items)
                     .onGeometryChange(for: CGSize.self, of: \.size) { panel.restingSize = $0 }
+                    .contentShape(Rectangle())
+                    .onTapGesture { panel.expand() }
+                    .gesture(
+                        DragGesture(minimumDistance: 4)
+                            .onChanged { _ in panel.moveWithMouse() }
+                            .onEnded { _ in panel.endMove() }
+                    )
             case .dropTarget:
                 DropTarget()
             case .expanded:
                 ExpandedShelf(items: items)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .clipShape(shape)
-        .contentShape(shape)
-        .onTapGesture { if panel.mode == .resting { panel.expand() } }
         .glassEffect(.regular, in: shape)
         .overlay {
             if isTargeted && panel.mode == .expanded {
