@@ -16,7 +16,9 @@ final class ShelfPanel: NSPanel {
         level = .floating
         backgroundColor = .clear
         isOpaque = false
-        hasShadow = true
+        // The system shadow is computed from the window's shape and goes stale while the
+        // panel animates between sizes, leaving dark corners. The glass draws its own edge.
+        hasShadow = false
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

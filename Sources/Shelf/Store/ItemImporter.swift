@@ -1,5 +1,8 @@
 import AppKit
+import OSLog
 import UniformTypeIdentifiers
+
+let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.shelf.app.dev", category: "import")
 
 /// Something dropped or pasted, before it becomes a `ShelfItem`.
 enum Incoming {
@@ -42,8 +45,14 @@ enum ItemImporter {
     }
 
     private static func incoming(from provider: NSItemProvider) async -> Incoming? {
+        logger.notice("drop types: \(provider.registeredTypeIdentifiers, privacy: .public)")
         if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier),
            let url = await provider.loadURL(.fileURL) {
+            return .file(url)
+        }
+        // Finder usually hands over "a PNG file" rather than a file URL. Asking for the
+        // original in place gets the real file, so it can be moved off the Desktop.
+        if let url = await provider.loadOriginalFile() {
             return .file(url)
         }
         if let type = provider.registeredContentTypes.first(where: { $0.conforms(to: .image) }),
@@ -90,6 +99,17 @@ extension NSItemProvider {
 
     func loadImageData() async -> Data? {
         await loadData(registeredContentTypes.first { $0.conforms(to: .image) } ?? .image)
+    }
+
+    /// The original file behind the item when it can be opened in place, as with a file
+    /// dragged from Finder. Nil when the item is only data, such as an image from a web page.
+    func loadOriginalFile() async -> URL? {
+        guard let type = registeredContentTypes.first else { return nil }
+        return await withCheckedContinuation { continuation in
+            _ = loadInPlaceFileRepresentation(forTypeIdentifier: type.identifier) { url, isInPlace, _ in
+                continuation.resume(returning: isInPlace ? url : nil)
+            }
+        }
     }
 
     func loadURL(_ type: UTType) async -> URL? {

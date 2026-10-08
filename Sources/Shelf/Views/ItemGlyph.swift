@@ -6,7 +6,7 @@ struct ItemGlyph: View {
     var size: CGFloat = 32
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: size / 4, style: .continuous)
         content
             .frame(width: size, height: size)
             .clipShape(shape)
@@ -33,8 +33,8 @@ struct ItemGlyph: View {
             if let data = item.favicon, let icon = NSImage(data: data) {
                 Image(nsImage: icon)
                     .resizable()
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-                    .padding(8)
+                    .clipShape(RoundedRectangle(cornerRadius: size / 8))
+                    .padding(size / 4)
                     .background(.fill.tertiary)
             } else {
                 symbol("globe")

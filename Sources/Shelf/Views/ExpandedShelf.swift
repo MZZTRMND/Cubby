@@ -1,44 +1,49 @@
 import SwiftUI
 
-enum ItemFilter: String, CaseIterable, Identifiable {
-    case all = "All", media = "Media", links = "Links", text = "Text"
-
-    var id: Self { self }
-
-    func matches(_ kind: ItemKind) -> Bool {
-        switch self {
-        case .all: true
-        case .media: kind == .image || kind == .file || kind == .color
-        case .links: kind == .link
-        case .text: kind == .text
-        }
-    }
-}
-
-/// The full view: header, filter and a single-column list.
+/// The open shelf: a header and a free canvas where items sit wherever you put them.
 struct ExpandedShelf: View {
     let items: [ShelfItem]
     @Environment(ShelfStore.self) private var store
-    @State private var filter: ItemFilter = .all
+    @Environment(PanelController.self) private var panel
+    @State private var isTargeted = false
 
     var body: some View {
         VStack(spacing: 12) {
             header
-            Picker("Filter", selection: $filter) {
-                ForEach(ItemFilter.allCases) { Text($0.rawValue) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+                .padding(.horizontal, 16)
             ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(items.filter { filter.matches($0.kind) }) { ItemRow(item: $0) }
+                ZStack(alignment: .topLeading) {
+                    // At least as tall as the visible area, so you can drop anywhere.
+                    Color.clear.containerRelativeFrame(.vertical)
+                    Color.clear.frame(height: contentHeight)
+                    // Oldest first, so newer items draw on top where they overlap.
+                    ForEach(items.reversed()) { item in
+                        CanvasIcon(item: item)
+                            .position(item.canvasPosition ?? CanvasLayout.slot(0))
+                    }
                 }
+                .frame(width: CanvasLayout.width)
+                .contentShape(Rectangle())
+                .onDrop(of: ItemImporter.dropTypes, delegate: CanvasDrop(store: store, isTargeted: $isTargeted))
             }
             .scrollIndicators(.never)
         }
-        .padding(16)
+        .padding(.vertical, 16)
         .frame(width: PanelController.expandedSize.width)
         .frame(maxHeight: .infinity)
+        .overlay {
+            if isTargeted {
+                RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(.tint, lineWidth: 2)
+            }
+        }
+        .onAppear {
+            store.tidy()
+            store.placeUnplaced()
+        }
+    }
+
+    private var contentHeight: CGFloat {
+        (items.compactMap { $0.canvasPosition?.y }.max() ?? 0) + CanvasLayout.cell.height / 2
     }
 
     private var header: some View {
@@ -54,36 +59,108 @@ struct ExpandedShelf: View {
                 Button("Clear") { store.clear() }
                     .disabled(!items.contains { !$0.isPinned })
             }
+            Button {
+                panel.collapse()
+            } label: {
+                Image(systemName: panel.edge == .left ? "chevron.left" : "chevron.right")
+            }
+            .help("Collapse")
         }
         .buttonStyle(.glass)
         .controlSize(.small)
     }
 }
 
-struct ItemRow: View {
-    let item: ShelfItem
+/// Drops on the canvas: a shelf item is moved to where it's dropped; anything else is
+/// added there.
+private struct CanvasDrop: DropDelegate {
+    let store: ShelfStore
+    @Binding var isTargeted: Bool
 
-    var body: some View {
-        HStack(spacing: 12) {
-            ItemGlyph(item: item)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(primary)
-                    .font(item.kind == .color ? .callout.monospaced() : .callout)
-                    .lineLimit(item.kind == .text ? 3 : 1)
-                    .truncationMode(item.kind == .file || item.kind == .image ? .middle : .tail)
-                if let secondary {
-                    Text(secondary)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(8)
+    func dropEntered(info: DropInfo) {
+        isTargeted = store.draggedItemID == nil
     }
 
-    private var primary: String {
+    func dropExited(info: DropInfo) {
+        isTargeted = false
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        isTargeted = false
+        if let id = store.draggedItemID {
+            store.move(id, to: info.location)
+        } else {
+            store.drop(info.itemProviders(for: ItemImporter.dropTypes), at: info.location)
+        }
+        return true
+    }
+}
+
+/// An item on the canvas: its preview with a short name underneath, like a desktop icon.
+private struct CanvasIcon: View {
+    let item: ShelfItem
+    @Environment(ShelfStore.self) private var store
+    @State private var showsCopied = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ItemGlyph(item: item, size: CanvasLayout.iconSize)
+                .overlay(alignment: .topTrailing) {
+                    if item.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 16, height: 16)
+                            .background(.tint, in: Circle())
+                            .offset(x: 4, y: -4)
+                    }
+                }
+            Text(showsCopied ? "Copied" : label)
+                .font(.caption)
+                .foregroundStyle(showsCopied ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .multilineTextAlignment(.center)
+                .frame(width: CanvasLayout.cell.width - 8)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { activate() }
+        .draggable(ShelfDragItem.self, id: \.id, item: ShelfDragItem(item))
+        .dragConfiguration(dragConfiguration)
+        .onDragSessionUpdated { session in
+            switch session.phase {
+            case .initial, .active:
+                store.draggedItemID = item.id
+            case .ended, .dataTransferCompleted:
+                store.draggedItemID = nil
+                store.tidyAfterDragOut()
+            @unknown default:
+                break
+            }
+        }
+        .contextMenu {
+            Button(item.isPinned ? "Unpin" : "Pin") { store.togglePin(item) }
+            Button("Copy") { copy() }
+            if item.fileURL != nil {
+                Button("Reveal in Finder") { store.revealInFinder(item) }
+            }
+            Divider()
+            Button("Remove") { store.remove(item) }
+        }
+    }
+
+    /// Files can only be moved out, so Finder takes them off the shelf like out of a
+    /// folder. Links and text are copied. Inside the shelf, anything goes.
+    private var dragConfiguration: DragConfiguration {
+        DragConfiguration(
+            operationsWithinApp: .init(allowCopy: true, allowMove: true),
+            operationsOutsideApp: ShelfDragItem(item).movesOut
+                ? .init(allowCopy: false, allowMove: true)
+                : .init(allowCopy: true)
+        )
+    }
+
+    private var label: String {
         switch item.kind {
         case .link: item.title ?? item.domain
         case .image, .file: item.fileName ?? item.text
@@ -91,11 +168,20 @@ struct ItemRow: View {
         }
     }
 
-    private var secondary: String? {
+    /// Files, images and links open; colors and text are copied.
+    private func activate() {
         switch item.kind {
-        case .link: item.title == nil ? nil : item.domain
-        case .image, .file: item.fileSize.formatted(.byteCount(style: .file))
-        case .color, .text: nil
+        case .file, .image, .link: store.open(item)
+        case .color, .text: copy()
+        }
+    }
+
+    private func copy() {
+        store.copy(item)
+        withAnimation(.easeOut(duration: 0.15)) { showsCopied = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            withAnimation(.easeOut(duration: 0.3)) { showsCopied = false }
         }
     }
 }

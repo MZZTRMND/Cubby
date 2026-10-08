@@ -37,12 +37,9 @@ struct PanelView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         .clipShape(shape)
         .glassEffect(.regular, in: shape)
-        .overlay {
-            if isTargeted && panel.mode == .expanded {
-                shape.strokeBorder(.tint, lineWidth: 2)
-            }
-        }
+        // The open shelf's canvas handles its own drops; this catches the rest.
         .onDrop(of: ItemImporter.dropTypes, isTargeted: $isTargeted) { providers in
+            guard store.draggedItemID == nil else { return false }
             store.drop(providers)
             panel.dropped()
             return true
@@ -53,7 +50,7 @@ struct PanelView: View {
     }
 }
 
-/// The 3 newest items as small previews, plus the count.
+/// The 5 newest items as small previews, plus the count.
 private struct RestingPill: View {
     let items: [ShelfItem]
 
@@ -65,7 +62,7 @@ private struct RestingPill: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
             } else {
-                ForEach(items.prefix(3)) { ItemGlyph(item: $0) }
+                ForEach(items.prefix(5)) { ItemGlyph(item: $0) }
                 Text(items.count, format: .number)
                     .font(.caption.weight(.medium))
                     .monospacedDigit()

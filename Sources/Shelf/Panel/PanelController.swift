@@ -43,7 +43,7 @@ final class PanelController {
     @ObservationIgnored private var moveStart: (mouse: NSPoint, origin: NSPoint)?
 
     private static let margin: CGFloat = 8
-    static let expandedSize = CGSize(width: 320, height: 520)
+    static let expandedSize = CGSize(width: CanvasLayout.width + 32, height: 520)
     static let dropTargetSize = CGSize(width: 136, height: 160)
 
     init(store: ShelfStore, container: ModelContainer) {
@@ -183,8 +183,6 @@ final class PanelController {
             context.duration = 0.25
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(frame, display: true)
-        } completionHandler: { [panel] in
-            panel.invalidateShadow()
         }
     }
 

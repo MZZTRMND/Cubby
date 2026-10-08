@@ -20,6 +20,12 @@ final class ShelfItem {
     var storedPath: String?
     @Attribute(.externalStorage) var thumbnail: Data?
     @Attribute(.externalStorage) var favicon: Data?
+    /// The user's own file, moved here from the Desktop rather than copied. It goes to
+    /// the Trash when the item is removed.
+    var isOriginal: Bool = false
+    /// Where the item sits on the open shelf's canvas (its center), once placed.
+    var canvasX: Double?
+    var canvasY: Double?
 
     init(id: UUID = UUID(), kind: ItemKind, text: String) {
         self.id = id
@@ -31,6 +37,14 @@ final class ShelfItem {
     }
 
     var kind: ItemKind { ItemKind(rawValue: kindRaw) ?? .text }
+
+    var canvasPosition: CGPoint? {
+        get { canvasX.flatMap { x in canvasY.map { CGPoint(x: x, y: $0) } } }
+        set {
+            canvasX = newValue.map { Double($0.x) }
+            canvasY = newValue.map { Double($0.y) }
+        }
+    }
 
     var fileURL: URL? { storedPath.map { AppPaths.files.appending(path: $0) } }
 
