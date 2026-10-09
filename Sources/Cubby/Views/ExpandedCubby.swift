@@ -8,32 +8,64 @@ struct ExpandedCubby: View {
     @Environment(CubbyStore.self) private var store
     @Environment(PanelController.self) private var panel
 
-    private static let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+    static let columnCount = 3
+    private static let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: columnCount)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 40, style: .continuous)
-        ScrollView {
-            LazyVGrid(columns: Self.columns, spacing: 20) {
-                ForEach(store.sorted(items)) { GridItemView(item: $0) }
+        let sorted = store.sorted(items)
+        // Everything that sets up the scroll view stays inside the reader.
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVGrid(columns: Self.columns, spacing: 8) {
+                    ForEach(sorted) { item in
+                        GridItemView(
+                            item: item,
+                            isSelected: store.selection.contains(item.id),
+                            select: { store.select(item.id, extending: $0, in: sorted.map(\.id)) },
+                            dragGroup: { dragGroup(for: item, in: sorted) }
+                        )
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .animation(PanelController.animation, value: store.sortOrder)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .animation(PanelController.animation, value: store.sortOrder)
-        }
-        .scrollIndicators(.never)
-        // The system's progressive blur where items scroll under the header and footer.
-        .scrollEdgeEffectStyle(.soft, for: .vertical)
-        .safeAreaBar(edge: .top) {
-            header
+            .onChange(of: store.cursorID) { _, id in
+                // Keep the item the arrow keys moved to in view.
+                guard let id else { return }
+                withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
+            }
+            .scrollIndicators(.never)
+            // Clicking between items clears the selection.
+            .contentShape(Rectangle())
+            .onTapGesture { store.clearSelection() }
+            .overlay {
+                if items.isEmpty { emptyState }
+            }
+            // The system's progressive blur where items scroll under the header and footer.
+            .scrollEdgeEffectStyle(.soft, for: .vertical)
+            .safeAreaBar(edge: .top) {
+                VStack(spacing: 10) {
+                    header
+                    if !store.missingNames.isEmpty {
+                        MissingNotice(names: store.missingNames) {
+                            withAnimation(PanelController.animation) { store.missingNames = [] }
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
                 .padding(.bottom, 8)
-        }
-        .safeAreaBar(edge: .bottom) {
-            actions
-                .padding(.horizontal, 8)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .animation(PanelController.animation, value: store.missingNames)
+            }
+            .safeAreaBar(edge: .bottom) {
+                actions
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
+            }
         }
         .frame(width: PanelController.expandedSize.width, height: PanelController.expandedSize.height)
         .clipShape(shape)
@@ -44,17 +76,37 @@ struct ExpandedCubby: View {
         .onAppear { store.tidy() }
     }
 
+    /// Dragging a selected item takes the whole selection along, the item under the
+    /// pointer first; dragging any other item takes just that one.
+    private func dragGroup(for item: CubbyItem, in sorted: [CubbyItem]) -> [CubbyItem] {
+        guard store.selection.contains(item.id) else {
+            store.clearSelection()
+            return [item]
+        }
+        return [item] + sorted.filter { $0.id != item.id && store.selection.contains($0.id) }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: 36, weight: .light))
+                .padding(.bottom, 4)
+            Text("Drop files, links or text here")
+                .font(.headline)
+            Text("or paste with \u{2318}V")
+                .font(.callout)
+        }
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .allowsHitTesting(false)
+    }
+
     private var header: some View {
         HStack(spacing: 8) {
-            Text("Cubby")
-                .bold()
             Text(items.count, format: .number)
-                .font(.callout.weight(.semibold))
+                .font(.title3.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .background(.fill.secondary, in: Capsule())
             Spacer()
             Button {
                 panel.collapse()
@@ -87,6 +139,48 @@ struct ExpandedCubby: View {
             .menuIndicator(.hidden)
             .frame(maxWidth: .infinity)
             ActionButton(title: "Upload", symbol: "arrow.up.doc") { panel.chooseFilesToAdd() }
+        }
+    }
+}
+
+/// Says which items left the cubby on their own because their file was moved or deleted
+/// outside it. Goes away on its own after a while, or with its close button.
+private struct MissingNotice: View {
+    let names: [String]
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.circle")
+                .foregroundStyle(.secondary)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.fill.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .task(id: names) {
+            try? await Task.sleep(for: .seconds(8))
+            if !Task.isCancelled { dismiss() }
+        }
+    }
+
+    private var message: String {
+        if names.count == 1 {
+            "\u{201C}\(names[0])\u{201D} is no longer here. Its file was moved or deleted outside Cubby."
+        } else {
+            "\(names.count) items are no longer here. Their files were moved or deleted outside Cubby."
         }
     }
 }
@@ -128,6 +222,10 @@ private struct ActionButton: View {
 /// right-click for more, drag to move it out.
 private struct GridItemView: View {
     let item: CubbyItem
+    let isSelected: Bool
+    /// ⌘- or ⇧-click; true extends the selection as a range.
+    let select: (_ extending: Bool) -> Void
+    let dragGroup: () -> [CubbyItem]
     @Environment(CubbyStore.self) private var store
     @Environment(PanelController.self) private var panel
     @State private var showsCopied = false
@@ -144,18 +242,50 @@ private struct GridItemView: View {
                 .truncationMode(.middle)
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background {
+            if isSelected {
+                Color.clear.glassSurface(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
         .overlay {
             ItemInteraction(
-                writer: { store.pasteboardWriter(for: item) },
-                preview: { ImageRenderer(content: ItemGlyph(item: item, size: Self.iconSize, natural: true)).nsImage },
-                movesOut: store.movesOut(item),
-                menu: { menu },
-                onClick: activate,
-                onDragStart: { store.draggedItemID = item.id },
-                onDragEnd: { store.dragEnded(item.id, delivered: $0) }
+                drag: startDrag,
+                menu: { rightClicked(); return menu },
+                onClick: click,
+                onDragEnd: { store.dragEnded(Array(store.draggedItemIDs), delivered: $0) }
             )
         }
+        .onHover { inside in
+            if inside {
+                store.hoveredItemID = item.id
+            } else if store.hoveredItemID == item.id {
+                store.hoveredItemID = nil
+            }
+        }
         .pointingHandCursor()
+    }
+
+    /// Right-clicking an item that isn't selected selects just it, as in Finder; one
+    /// that is keeps the selection.
+    private func rightClicked() {
+        guard !store.selection.contains(item.id) else { return }
+        store.clearSelection()
+        select(false)
+    }
+
+    /// The selected items when this one is among several, for Move to Bin and Remove.
+    private var group: [CubbyItem] {
+        store.selection.contains(item.id) && store.selection.count > 1 ? store.selectedItems() : [item]
+    }
+
+    /// One item for the whole group when several are selected.
+    private var removeGroupItem: NSMenuItem? {
+        let group = group
+        guard group.count > 1 else { return nil }
+        let hasFiles = group.contains { $0.fileURL != nil }
+        let title = hasFiles ? "Move \(group.count) Items to Bin" : "Remove \(group.count) Items"
+        return ActionMenuItem(title) { store.moveToBin(group, actionName: hasFiles ? "Move to Bin" : "Remove") }
     }
 
     /// Files get the same menu as on the Desktop, plus Move to Desktop. Links, colors
@@ -166,14 +296,14 @@ private struct GridItemView: View {
             if item.kind == .link { menu.addItem(ActionMenuItem("Open") { store.open(item) }) }
             menu.addItem(ActionMenuItem("Copy") { copy() })
             menu.addItem(.separator())
-                menu.addItem(ActionMenuItem("Remove") { store.remove(item) })
+            menu.addItem(removeGroupItem ?? ActionMenuItem("Remove") { store.remove(item) })
             return menu
         }
         menu.addItem(ActionMenuItem("Open") { store.open(item) })
         menu.addItem(openWithMenu(for: url))
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Move to Desktop") { store.moveToDesktop(item) })
-        menu.addItem(ActionMenuItem("Move to Bin") { store.moveToBin(item) })
+        menu.addItem(removeGroupItem ?? ActionMenuItem("Move to Bin") { store.moveToBin(item) })
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Get Info") { store.showInfo(item) })
         menu.addItem(ActionMenuItem("Rename…") { panel.rename(item) })
@@ -219,6 +349,28 @@ private struct GridItemView: View {
         case .image, .file: item.fileName ?? item.text
         case .color, .text: item.text
         }
+    }
+
+    /// A plain click opens or copies; ⌘ or ⇧ picks the item instead.
+    private func click(_ modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.command) || modifiers.contains(.shift) {
+            select(modifiers.contains(.shift))
+        } else {
+            store.clearSelection()
+            activate()
+        }
+    }
+
+    private func startDrag() -> (pieces: [ItemInteraction.Piece], movesOut: Bool) {
+        let group = dragGroup()
+        store.draggedItemIDs = Set(group.map(\.id))
+        let pieces = group.map { item in
+            ItemInteraction.Piece(
+                writer: store.pasteboardWriter(for: item),
+                image: ImageRenderer(content: ItemGlyph(item: item, size: Self.iconSize, natural: true)).nsImage
+            )
+        }
+        return (pieces, group.contains { store.movesOut($0) })
     }
 
     /// Files, images and links open; colors and text are copied.

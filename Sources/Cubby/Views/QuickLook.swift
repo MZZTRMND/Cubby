@@ -1,22 +1,36 @@
 import Quartz
 
-/// Shows a file in the system Quick Look panel.
+/// Shows files in the system Quick Look panel; with several, the arrow keys step through them.
 @MainActor
 final class QuickLook: NSObject, QLPreviewPanelDataSource {
     static let shared = QuickLook()
-    private var url: URL?
+    private var urls: [URL] = []
 
-    func show(_ url: URL) {
-        self.url = url
-        guard let panel = QLPreviewPanel.shared() else { return }
+    var count: Int { urls.count }
+
+    var isShown: Bool { QLPreviewPanel.sharedPreviewPanelExists() && QLPreviewPanel.shared().isVisible }
+
+    func show(_ url: URL) { show([url]) }
+
+    func show(_ urls: [URL]) {
+        guard !urls.isEmpty, let panel = QLPreviewPanel.shared() else { return }
+        self.urls = urls
         panel.dataSource = self
         panel.reloadData()
+        panel.currentPreviewItemIndex = 0
         panel.makeKeyAndOrderFront(nil)
     }
 
-    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int { 1 }
+    func close() {
+        guard isShown else { return }
+        QLPreviewPanel.shared().orderOut(nil)
+    }
+
+    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        MainActor.assumeIsolated { urls.count }
+    }
 
     nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> (any QLPreviewItem)! {
-        MainActor.assumeIsolated { url as NSURL? }
+        MainActor.assumeIsolated { urls.indices.contains(index) ? urls[index] as NSURL : nil }
     }
 }

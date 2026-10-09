@@ -2,15 +2,21 @@ import AppKit
 import SwiftUI
 
 /// Clicks, right-clicks and drags on an item in the open cubby, handled by AppKit. The
-/// drag puts the file itself on the pasteboard up front and only allows a move out of
-/// the app, so Finder takes the file the moment you let go.
+/// drag puts the files themselves on the pasteboard up front and only allows a move out
+/// of the app, so Finder takes them the moment you let go.
 struct ItemInteraction: NSViewRepresentable {
-    let writer: () -> NSPasteboardWriting
-    let preview: () -> NSImage?
-    let movesOut: Bool
+    /// One item in a drag: what goes on the pasteboard and how it looks.
+    struct Piece {
+        let writer: NSPasteboardWriting
+        let image: NSImage?
+    }
+
+    /// Starts a drag: the pieces, the item under the pointer first, and whether they
+    /// move out of the app rather than being copied.
+    let drag: () -> (pieces: [Piece], movesOut: Bool)
+    /// Right-click. The item can update the selection before building the menu.
     let menu: () -> NSMenu
-    let onClick: () -> Void
-    let onDragStart: () -> Void
+    let onClick: (NSEvent.ModifierFlags) -> Void
     let onDragEnd: (_ delivered: Bool) -> Void
 
     func makeNSView(context: Context) -> InteractionView { InteractionView() }
@@ -23,6 +29,7 @@ struct ItemInteraction: NSViewRepresentable {
         var interaction: ItemInteraction?
         private var mouseDown: NSEvent?
         private var isDragging = false
+        private var movesOut = false
 
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -38,18 +45,27 @@ struct ItemInteraction: NSViewRepresentable {
             guard hypot(dx, dy) > 3 else { return }
             isDragging = true
 
-            let item = NSDraggingItem(pasteboardWriter: interaction.writer())
-            let image = interaction.preview() ?? NSImage(size: bounds.size)
-            item.setDraggingFrame(NSRect(x: (bounds.width - image.size.width) / 2,
-                                         y: (bounds.height - image.size.height) / 2,
-                                         width: image.size.width, height: image.size.height),
-                                  contents: image)
-            interaction.onDragStart()
-            beginDraggingSession(with: [item], event: mouseDown, source: self)
+            let (pieces, movesOut) = interaction.drag()
+            self.movesOut = movesOut
+            // The rest of a selection fans out behind the item under the pointer.
+            let items = pieces.enumerated().map { index, piece in
+                let item = NSDraggingItem(pasteboardWriter: piece.writer)
+                let image = piece.image ?? NSImage(size: bounds.size)
+                let step = CGFloat(index) * 6
+                item.setDraggingFrame(NSRect(x: (bounds.width - image.size.width) / 2 + step,
+                                             y: (bounds.height - image.size.height) / 2 - step,
+                                             width: image.size.width, height: image.size.height),
+                                      contents: image)
+                return item
+            }
+            let session = beginDraggingSession(with: items, event: mouseDown, source: self)
+            session.draggingFormation = .stack
         }
 
         override func mouseUp(with event: NSEvent) {
-            if mouseDown != nil, !isDragging { interaction?.onClick() }
+            if let mouseDown, !isDragging {
+                interaction?.onClick(mouseDown.modifierFlags.intersection(.deviceIndependentFlagsMask))
+            }
             mouseDown = nil
         }
 
@@ -60,7 +76,7 @@ struct ItemInteraction: NSViewRepresentable {
             // Inside the cubby anything goes (it ignores its own items); outside, files
             // can only be moved.
             if context == .withinApplication { return [.copy, .move, .generic] }
-            return interaction?.movesOut == true ? .move : .copy
+            return movesOut ? .move : .copy
         }
 
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,

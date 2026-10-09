@@ -25,21 +25,39 @@ final class CubbyStore {
     var sortOrder: SortOrder {
         didSet { UserDefaults.standard.set(sortOrder.rawValue, forKey: "sortOrder") }
     }
-    /// The item being dragged out of the open cubby, if any. Dropping it back onto the
+    /// The items being dragged out of the open cubby, if any. Dropping them back onto the
     /// cubby does nothing.
-    var draggedItemID: UUID?
+    var draggedItemIDs: Set<UUID> = []
+    /// Items picked with ⌘- or ⇧-click in the open cubby.
+    var selection: Set<UUID> = []
+    /// Where a ⇧-click range starts.
+    @ObservationIgnored private var selectionAnchor: UUID?
+    /// The item the arrow keys move from: the last one clicked or arrowed to. The grid
+    /// scrolls to keep it in view.
+    private(set) var cursorID: UUID?
+    /// Items `tidy()` dropped because their file was gone, by name, until the open
+    /// cubby has told you about them.
+    var missingNames: [String] = []
+    /// The item under the pointer in the open cubby, for Space.
+    @ObservationIgnored var hoveredItemID: UUID?
     @ObservationIgnored private var pasteMonitor: Any?
 
     /// Dropped files from these folders are moved into the cubby instead of copied, so
     /// they disappear from there.
     let movableFolders: [URL]
-    /// Moves a file to the Bin, so nothing of yours is lost.
-    private let trash: (URL) -> Void
+    /// Moves a file to the Bin, so nothing of yours is lost, and says where it went.
+    private let trash: (URL) -> URL?
+    /// Takes Move to Bin, Remove and Clear back with ⌘Z. The panel hands in its window's.
+    @ObservationIgnored var undoManager: UndoManager?
 
     init(
         context: ModelContext,
         movableFolders: [URL] = [URL.desktopDirectory],
-        trash: @escaping (URL) -> Void = { try? FileManager.default.trashItem(at: $0, resultingItemURL: nil) }
+        trash: @escaping (URL) -> URL? = { url in
+            var binned: NSURL?
+            try? FileManager.default.trashItem(at: url, resultingItemURL: &binned)
+            return binned as URL?
+        }
     ) {
         self.context = context
         self.movableFolders = movableFolders
@@ -217,15 +235,92 @@ final class CubbyStore {
     // MARK: - Removing
 
     func remove(_ item: CubbyItem) {
-        delete(item)
-        try? context.save()
+        moveToBin([item], actionName: "Remove")
     }
 
-    /// Moves every item's file to the Bin and empties the cubby. Ask first: this can't
-    /// be undone from here.
+    /// Moves every item's file to the Bin and empties the cubby. ⌘Z brings it all back.
     func clear() {
-        for item in (try? context.fetch(FetchDescriptor<CubbyItem>())) ?? [] { delete(item, toBin: true) }
+        moveToBin(allItems(), actionName: "Clear")
+    }
+
+    func moveToBin(_ item: CubbyItem) {
+        moveToBin([item], actionName: "Move to Bin")
+    }
+
+    /// An item taken out of the cubby, kept so Undo can put it back, file and all.
+    private struct Removed {
+        let id: UUID
+        let kindRaw: String
+        let addedAt: Date
+        let text: String
+        let title: String?
+        let fileName: String?
+        let fileSize: Int64
+        let storedPath: String?
+        let thumbnail: Data?
+        let favicon: Data?
+        let isOriginal: Bool
+        /// Where the file went in the Bin.
+        let binned: URL?
+    }
+
+    /// Moves the items' files to the Bin and takes them out of the cubby, as one step
+    /// that Undo takes back.
+    func moveToBin(_ items: [CubbyItem], actionName: String) {
+        guard !items.isEmpty else { return }
+        let removed = items.map { item in
+            var binned: URL?
+            if let url = item.fileURL, FileManager.default.fileExists(atPath: url.path) { binned = trash(url) }
+            try? FileManager.default.removeItem(at: AppPaths.files.appending(path: item.id.uuidString))
+            let record = Removed(
+                id: item.id, kindRaw: item.kindRaw, addedAt: item.addedAt, text: item.text, title: item.title,
+                fileName: item.fileName, fileSize: item.fileSize, storedPath: item.storedPath,
+                thumbnail: item.thumbnail, favicon: item.favicon, isOriginal: item.isOriginal, binned: binned
+            )
+            context.delete(item)
+            return record
+        }
         try? context.save()
+        selection.subtract(removed.map(\.id))
+        undoManager?.registerUndo(withTarget: self) { $0.restore(removed, actionName: actionName) }
+        undoManager?.setActionName(actionName)
+    }
+
+    /// Undo: brings the items back, their files out of the Bin. An item whose file has
+    /// left the Bin since stays gone.
+    private func restore(_ removed: [Removed], actionName: String) {
+        let fm = FileManager.default
+        var restored: [UUID] = []
+        for record in removed {
+            if let storedPath = record.storedPath {
+                guard let binned = record.binned, fm.fileExists(atPath: binned.path) else { continue }
+                let destination = AppPaths.files.appending(path: storedPath)
+                do {
+                    try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try fm.moveItem(at: binned, to: destination)
+                } catch {
+                    logger.error("restore from Bin failed: \(error.localizedDescription, privacy: .public)")
+                    continue
+                }
+            }
+            let item = CubbyItem(id: record.id, kind: ItemKind(rawValue: record.kindRaw) ?? .text, text: record.text)
+            item.addedAt = record.addedAt
+            item.title = record.title
+            item.fileName = record.fileName
+            item.fileSize = record.fileSize
+            item.storedPath = record.storedPath
+            item.thumbnail = record.thumbnail
+            item.favicon = record.favicon
+            item.isOriginal = record.isOriginal
+            context.insert(item)
+            restored.append(record.id)
+        }
+        try? context.save()
+        // Redo removes them again.
+        undoManager?.registerUndo(withTarget: self) { store in
+            store.moveToBin(restored.compactMap { store.item(withID: $0) }, actionName: actionName)
+        }
+        undoManager?.setActionName(actionName)
     }
 
     /// How many items Clear would remove.
@@ -242,16 +337,16 @@ final class CubbyStore {
             return !FileManager.default.fileExists(atPath: url.path)
         }
         guard !missing.isEmpty else { return }
+        missingNames += missing.map { $0.fileName ?? $0.text }
         for item in missing { delete(item) }
         try? context.save()
     }
 
-    /// Copies are deleted and your own moved files go to the Bin; with `toBin`, every
-    /// file goes to the Bin.
-    private func delete(_ item: CubbyItem, toBin: Bool = false) {
+    /// Copies are deleted and your own moved files go to the Bin.
+    private func delete(_ item: CubbyItem) {
         if item.storedPath != nil {
-            if item.isOriginal || toBin, let url = item.fileURL, FileManager.default.fileExists(atPath: url.path) {
-                trash(url)
+            if item.isOriginal, let url = item.fileURL, FileManager.default.fileExists(atPath: url.path) {
+                _ = trash(url)
             }
             try? FileManager.default.removeItem(at: AppPaths.files.appending(path: item.id.uuidString))
         }
@@ -267,7 +362,7 @@ final class CubbyStore {
         let folders = (try? fm.contentsOfDirectory(at: AppPaths.files, includingPropertiesForKeys: nil)) ?? []
         for folder in folders where !kept.contains(folder.lastPathComponent) {
             for file in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] {
-                trash(file)
+                _ = trash(file)
             }
             try? fm.removeItem(at: folder)
         }
@@ -296,8 +391,14 @@ final class CubbyStore {
     /// the moment it's dropped. Finder finishes moving the file a moment later; if the
     /// receiver copied it instead, the cubby's leftover copy is cleaned up once the copy
     /// has had time to finish.
+    func dragEnded(_ ids: [UUID], delivered: Bool) {
+        draggedItemIDs = []
+        for id in ids { dragEnded(id, delivered: delivered) }
+        selection.subtract(ids)
+    }
+
     func dragEnded(_ id: UUID, delivered: Bool) {
-        draggedItemID = nil
+        draggedItemIDs.remove(id)
         guard delivered, let item = item(withID: id), let url = item.fileURL else { return }
         let folder = AppPaths.files.appending(path: item.id.uuidString)
         let isOriginal = item.isOriginal
@@ -306,13 +407,95 @@ final class CubbyStore {
         Task { [trash] in
             try? await Task.sleep(for: .seconds(3))
             if FileManager.default.fileExists(atPath: url.path) {
-                if isOriginal { trash(url) } else { try? FileManager.default.removeItem(at: url) }
+                if isOriginal { _ = trash(url) } else { try? FileManager.default.removeItem(at: url) }
             }
             try? FileManager.default.removeItem(at: folder)
         }
     }
 
+    // MARK: - Selection
+
+    /// ⌘-click adds or removes one item; ⇧-click adds everything between the last
+    /// picked item and this one, in grid order.
+    func select(_ id: UUID, extending: Bool, in order: [UUID]) {
+        if extending, let anchor = selectionAnchor,
+           let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: id) {
+            selection.formUnion(order[min(from, to)...max(from, to)])
+            return
+        }
+        if selection.remove(id) == nil { selection.insert(id) }
+        selectionAnchor = id
+        cursorID = id
+    }
+
+    enum Direction { case left, right, up, down }
+
+    /// Arrow keys: move to the neighbouring item in a grid `columns` wide, selecting just
+    /// it, or with `extending` (⇧), selecting everything from the anchor to it. With
+    /// nothing picked yet, the first arrow picks the item under the pointer or the first.
+    func moveSelection(_ direction: Direction, columns: Int, extending: Bool) {
+        let order = allItems().map(\.id)
+        guard !order.isEmpty else { return }
+        let target: UUID
+        if let cursor = cursorID, let index = order.firstIndex(of: cursor) {
+            let lastRow = (order.count - 1) / columns
+            let next = switch direction {
+            case .left: max(index - 1, 0)
+            case .right: min(index + 1, order.count - 1)
+            case .up: index >= columns ? index - columns : index
+            // Into the row below, or its last item when that row is shorter.
+            case .down: index / columns < lastRow ? min(index + columns, order.count - 1) : index
+            }
+            target = order[next]
+        } else {
+            target = hoveredItemID.flatMap { order.contains($0) ? $0 : nil } ?? order[0]
+        }
+        // The pointer stays put while you use the keys; Space should follow the keys.
+        hoveredItemID = nil
+        if extending, let anchor = selectionAnchor ?? cursorID,
+           let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: target) {
+            selectionAnchor = anchor
+            selection = Set(order[min(from, to)...max(from, to)])
+        } else {
+            selection = [target]
+            selectionAnchor = target
+        }
+        cursorID = target
+    }
+
+    /// The selected items in grid order.
+    func selectedItems() -> [CubbyItem] {
+        allItems().filter { selection.contains($0.id) }
+    }
+
+    func selectAll() {
+        selection = Set(allItems().map(\.id))
+    }
+
+    func clearSelection() {
+        selection = []
+        selectionAnchor = nil
+        cursorID = nil
+    }
+
+    /// What Space previews: the item under the pointer, or the selection when the
+    /// pointer is over one of the selected items or over nothing. Only files and images.
+    func quickLookURLs(in order: [CubbyItem]) -> [URL] {
+        let picked: [CubbyItem]
+        if let hovered = hoveredItemID, !selection.contains(hovered) {
+            picked = order.filter { $0.id == hovered }
+        } else {
+            picked = order.filter { selection.contains($0.id) }
+        }
+        return picked.compactMap(\.fileURL)
+    }
+
     // MARK: - Item actions
+
+    /// Every item in grid order.
+    func allItems() -> [CubbyItem] {
+        sorted((try? context.fetch(FetchDescriptor<CubbyItem>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))) ?? [])
+    }
 
     private func item(withID id: UUID) -> CubbyItem? {
         var match = FetchDescriptor<CubbyItem>(predicate: #Predicate { $0.id == id })
@@ -376,11 +559,6 @@ final class CubbyStore {
         }
         try? FileManager.default.removeItem(at: AppPaths.files.appending(path: item.id.uuidString))
         context.delete(item)
-        try? context.save()
-    }
-
-    func moveToBin(_ item: CubbyItem) {
-        delete(item, toBin: true)
         try? context.save()
     }
 

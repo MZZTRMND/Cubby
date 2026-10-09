@@ -23,6 +23,10 @@ final class CubbyPanel: NSPanel {
         isReleasedWhenClosed = false
     }
 
+    /// The cubby's own Undo, for Move to Bin, Remove and Clear.
+    private let undo = UndoManager()
+    override var undoManager: UndoManager? { undo }
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 

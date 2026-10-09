@@ -13,7 +13,7 @@ struct PanelView: View {
         GeometryReader { geometry in
             ZStack {
                 if panel.mode == .expanded {
-                    ExpandedCubby(items: allItems, isTargeted: isTargeted && store.draggedItemID == nil)
+                    ExpandedCubby(items: allItems, isTargeted: isTargeted && store.draggedItemIDs.isEmpty)
                         .padding(PanelController.inset)
                         .transition(.scale(scale: 0.25, anchor: folderAnchor(in: geometry.size))
                             .combined(with: .opacity))
@@ -36,7 +36,7 @@ struct PanelView: View {
         }
         // Items dragged from the cubby itself are ignored.
         .onDrop(of: ItemImporter.dropTypes, isTargeted: $isTargeted) { providers in
-            guard store.draggedItemID == nil else { return false }
+            guard store.draggedItemIDs.isEmpty else { return false }
             store.drop(providers)
             panel.dropped()
             return true

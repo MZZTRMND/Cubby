@@ -26,9 +26,12 @@ struct StoreTests {
         desktop = FileManager.default.temporaryDirectory.appending(path: "cubby-desktop-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true)
         let trashed = trashed
+        let bin = desktop.appending(path: ".Bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
         store = CubbyStore(context: container.mainContext, movableFolders: [desktop]) { url in
             trashed.value.append(url)
-            try? FileManager.default.removeItem(at: url)
+            let binned = bin.appending(path: UUID().uuidString)
+            return (try? FileManager.default.moveItem(at: url, to: binned)) != nil ? binned : nil
         }
     }
 
@@ -129,9 +132,10 @@ struct StoreTests {
         await store.add([.file(elsewhere)], moveFiles: true).value
         #expect(FileManager.default.fileExists(atPath: elsewhere.path))
 
-        let before = trashed.value.count
-        for item in items { store.remove(item) }
-        #expect(trashed.value.count == before)
+        // Binning the cubby's copies leaves the originals where they were.
+        for item in items { store.moveToBin(item) }
+        #expect(FileManager.default.fileExists(atPath: onDesktop.path))
+        #expect(FileManager.default.fileExists(atPath: elsewhere.path))
     }
 
     @Test func sortOrderArrangesTheGrid() async {
@@ -149,6 +153,115 @@ struct StoreTests {
         #expect(store.sorted(items).map(\.text) == ["#ff0000", "apple", "banana"])
     }
 
+    @Test func commandAndShiftClickPickItemsAndSpacePreviewsThem() async throws {
+        for name in ["a.txt", "b.txt", "c.txt", "d.txt"] {
+            let url = desktop.appending(path: name)
+            try Data(name.utf8).write(to: url)
+            await store.add([.file(url)], moveFiles: false).value
+        }
+        await paste { $0.setString("note", forType: .string) }
+        let order = store.allItems()
+        let ids = order.map(\.id)
+
+        store.select(ids[1], extending: false, in: ids)
+        store.select(ids[3], extending: true, in: ids)
+        #expect(store.selection == Set(ids[1...3]))
+        store.select(ids[2], extending: false, in: ids)
+        #expect(store.selection == [ids[1], ids[3]])
+
+        // Space shows the selection, or the hovered item when it isn't selected; never text.
+        #expect(store.quickLookURLs(in: order) == [order[1].fileURL, order[3].fileURL].compactMap { $0 })
+        store.hoveredItemID = ids[4]
+        #expect(store.quickLookURLs(in: order) == [order[4].fileURL].compactMap { $0 })
+        store.hoveredItemID = ids[0]
+        #expect(store.quickLookURLs(in: order).isEmpty)
+
+        store.selectAll()
+        #expect(store.selection == Set(ids))
+        store.clearSelection()
+        #expect(store.selection.isEmpty)
+    }
+
+    @Test func undoBringsBackWhatMoveToBinRemoveAndClearTookAway() async throws {
+        let undo = UndoManager()
+        undo.groupsByEvent = false
+        store.undoManager = undo
+        func step(_ action: () -> Void) { undo.beginUndoGrouping(); action(); undo.endUndoGrouping() }
+
+        let source = desktop.appending(path: "keep.txt")
+        try "kept".write(to: source, atomically: true, encoding: .utf8)
+        await store.add([.file(source)], moveFiles: true).value
+        await paste { $0.setString("a note", forType: .string) }
+        let file = try #require(items.first { $0.kind == .file })
+        let id = file.id, stored = try #require(file.fileURL)
+
+        step { store.moveToBin(file) }
+        #expect(items.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: stored.path))
+        undo.undo()
+        #expect(items.count == 2)
+        let back = try #require(items.first { $0.id == id })
+        #expect(back.isOriginal)
+        #expect(try String(contentsOf: stored, encoding: .utf8) == "kept")
+        undo.redo()
+        #expect(items.count == 1)
+        undo.undo()
+
+        step { store.clear() }
+        #expect(items.isEmpty)
+        undo.undo()
+        #expect(Set(items.map(\.text)) == ["keep.txt", "a note"])
+        #expect(FileManager.default.fileExists(atPath: stored.path))
+        #expect(undo.redoActionName == "Clear")
+    }
+
+    @Test func arrowKeysWalkTheGrid() async {
+        // Five items in three columns:  0 1 2
+        //                               3 4
+        for text in ["e", "d", "c", "b", "a"] { await paste { $0.setString(text, forType: .string) } }
+        let ids = store.allItems().map(\.id)
+        func move(_ direction: CubbyStore.Direction, extending: Bool = false) {
+            store.moveSelection(direction, columns: 3, extending: extending)
+        }
+
+        move(.right)
+        #expect(store.selection == [ids[0]])
+        move(.left)
+        #expect(store.selection == [ids[0]])
+        move(.down)
+        #expect(store.selection == [ids[3]])
+        move(.down)
+        #expect(store.selection == [ids[3]])
+        move(.up); move(.right); move(.right); move(.down)
+        #expect(store.selection == [ids[4]])
+        move(.left, extending: true)
+        #expect(store.selection == [ids[3], ids[4]])
+        move(.up, extending: true)
+        #expect(store.selection == Set(ids[0...4]))
+
+        // With nothing picked, the first arrow starts at the item under the pointer.
+        store.clearSelection()
+        store.hoveredItemID = ids[2]
+        move(.down)
+        #expect(store.selection == [ids[2]])
+        #expect(store.hoveredItemID == nil)
+    }
+
+    @Test func aSelectionDraggedOutLeavesTogether() async throws {
+        for name in ["one.txt", "two.txt"] {
+            let url = desktop.appending(path: name)
+            try Data(name.utf8).write(to: url)
+            await store.add([.file(url)], moveFiles: false).value
+        }
+        let ids = items.map(\.id)
+        store.selection = Set(ids)
+        store.draggedItemIDs = Set(ids)
+        store.dragEnded(ids, delivered: true)
+        #expect(items.isEmpty)
+        #expect(store.selection.isEmpty)
+        #expect(store.draggedItemIDs.isEmpty)
+    }
+
     @Test func itemsWhoseFileWasMovedAwayAreDropped() async throws {
         let source = desktop.appending(path: "gone.txt")
         try "x".write(to: source, atomically: true, encoding: .utf8)
@@ -157,6 +270,7 @@ struct StoreTests {
         try FileManager.default.removeItem(at: stored)
         store.tidy()
         #expect(items.isEmpty)
+        #expect(store.missingNames == ["gone.txt"])
     }
 
     /// Finder hands files over as "a PNG file that can be opened in place", not as a URL.

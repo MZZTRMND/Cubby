@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 import SwiftUI
 import SwiftData
 
@@ -69,6 +70,7 @@ final class PanelController {
     @ObservationIgnored private let panel = CubbyPanel()
     @ObservationIgnored private var collapseTask: Task<Void, Never>?
     @ObservationIgnored private var isMoving = false
+    @ObservationIgnored private var keyMonitor: Any?
     /// While a dialog is up, losing focus mustn't close the card.
     @ObservationIgnored private var isPresentingDialog = false
 
@@ -96,6 +98,8 @@ final class PanelController {
         hosting.sizingOptions = []
         panel.contentView = hosting
         panel.onCancel = { [weak self] in self?.collapse() }
+        store.undoManager = panel.undoManager
+        installKeyMonitor()
 
         let center = NotificationCenter.default
         center.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
@@ -148,6 +152,10 @@ final class PanelController {
         collapseTask?.cancel()
         guard mode != .resting else { return }
         let wasExpanded = mode == .expanded
+        store.clearSelection()
+        store.hoveredItemID = nil
+        // You've seen the notice about missing files once the card has been open.
+        if wasExpanded { store.missingNames = [] }
         withAnimation(Self.animation, completionCriteria: .removed) {
             mode = .resting
         } completion: { [weak self] in
@@ -155,6 +163,65 @@ final class PanelController {
             guard let self, wasExpanded, self.mode == .resting else { return }
             self.resize(to: self.restingFrame(), folderOffset: .zero)
         }
+    }
+
+    /// Keys for the open card: the arrows move the selection (⇧ extends it), Return
+    /// or ⌘↓ opens it, Space toggles Quick Look, as in Finder, ⌘A selects everything,
+    /// and ⌘Z / ⇧⌘Z undo and redo.
+    private func installKeyMonitor() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, self.mode == .expanded,
+                  event.window === self.panel || event.window is QLPreviewPanel,
+                  !(event.window?.firstResponder is NSText)
+            else { return event }
+            // Arrow keys always carry these two.
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                .subtracting([.numericPad, .function])
+            let quickLook = QuickLook.shared
+
+            if let direction = Self.direction(of: event), flags.isEmpty || flags == .shift {
+                // Quick Look steps through several previewed files itself.
+                if event.window is QLPreviewPanel, quickLook.count > 1 { return event }
+                self.store.moveSelection(direction, columns: ExpandedCubby.columnCount, extending: flags == .shift)
+                if quickLook.isShown { self.refreshQuickLook() }
+                return nil
+            }
+            switch (event.keyCode, flags) {
+            case (49, []): // Space
+                if quickLook.isShown { quickLook.close() } else { self.refreshQuickLook() }
+            case (36, []), (76, []), (125, .command): // Return, Enter, ⌘↓
+                guard event.window === self.panel else { return event }
+                for item in self.store.selectedItems() { self.store.open(item) }
+            case (0, .command): // ⌘A
+                guard event.window === self.panel else { return event }
+                self.store.selectAll()
+            case (6, .command): // ⌘Z
+                guard event.window === self.panel else { return event }
+                self.panel.undoManager?.undo()
+            case (6, [.command, .shift]): // ⇧⌘Z
+                guard event.window === self.panel else { return event }
+                self.panel.undoManager?.redo()
+            default:
+                return event
+            }
+            return nil
+        }
+    }
+
+    private static func direction(of event: NSEvent) -> CubbyStore.Direction? {
+        switch event.keyCode {
+        case 123: .left
+        case 124: .right
+        case 125: .down
+        case 126: .up
+        default: nil
+        }
+    }
+
+    /// Previews what Space would, or closes Quick Look when that's nothing.
+    private func refreshQuickLook() {
+        let urls = store.quickLookURLs(in: store.allItems())
+        urls.isEmpty ? QuickLook.shared.close() : QuickLook.shared.show(urls)
     }
 
     func dragEntered() {
@@ -197,8 +264,8 @@ final class PanelController {
         let alert = NSAlert()
         alert.messageText = "Clear the cubby?"
         alert.informativeText = count == 1
-            ? "1 item will be moved to the Bin."
-            : "\(count) items will be moved to the Bin."
+            ? "1 item will be moved to the Bin. You can undo this with \u{2318}Z."
+            : "\(count) items will be moved to the Bin. You can undo this with \u{2318}Z."
         alert.addButton(withTitle: "Move to Bin").hasDestructiveAction = true
         alert.addButton(withTitle: "Cancel")
         if run(alert) == .alertFirstButtonReturn { store.clear() }
