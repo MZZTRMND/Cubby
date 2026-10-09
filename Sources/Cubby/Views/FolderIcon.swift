@@ -14,12 +14,13 @@ struct FolderIcon: View {
     @State private var pinWiggles = 0
 
     /// Set in Settings: the whole folder, and the items on top of that.
-    @AppStorage(Self.folderScaleKey) private var folderScale = 1.0
+    @AppStorage(Self.folderScaleKey) private var folderScale = Self.defaultFolderScale
     @AppStorage(Self.itemScaleKey) private var itemScale = 1.0
 
     static let folderScaleKey = "folderScale"
     static let itemScaleKey = "itemScale"
     static let folderScaleRange: ClosedRange<Double> = 0.75...1.5
+    static let defaultFolderScale = 1.2
     /// Narrower, so items never get wider than the folder.
     static let itemScaleRange: ClosedRange<Double> = 0.6...1.25
 
@@ -39,13 +40,16 @@ struct FolderIcon: View {
     /// How far the items slide up when the folder opens.
     private static let rise: CGFloat = 22
 
-    /// Up to five items standing close together like papers, the newest in front. When
-    /// the folder opens they fan out: further apart and more tilted.
+    /// Up to eight items in a loose pile, as if tossed in, the newest in front. When the
+    /// folder opens they rise by slightly different amounts, spread apart and tilt more.
     private static let spots: [(x: CGFloat, y: CGFloat, angle: Double)] = [
-        (-4, 0, 0), (12, 2, 2), (-18, 3, -2), (24, 5, 3), (-28, 6, -3),
+        (-3, 2, -4), (14, -4, 9), (-16, -2, -11), (6, -10, 5),
+        (-8, -12, -6), (20, 4, 14), (-22, 6, -15), (2, -16, 2),
     ]
-    private static let fanSpread: CGFloat = 1.7
-    private static let fanTilt: Double = 3
+    private static let fanSpread: CGFloat = 1.4
+    private static let fanTilt: Double = 1.5
+    /// On top of `rise`, so the items don't all come up level.
+    private static let extraRise: [CGFloat] = [0, 4, 8]
 
     /// White in light mode, and a gray a little lighter than the back in dark mode.
     private static let pageColor = Color(nsColor: NSColor(name: nil) { appearance in
@@ -104,10 +108,24 @@ struct FolderIcon: View {
                 pinWiggles += 1
             }
         }
+        // Room around the folder for the items as they fan out, tilt and cast shadows on
+        // hover, so the window's edge never cuts them. Outside the hover area above.
+        .padding(.horizontal, fanRoom)
+        .padding(.top, 10 * scale)
+    }
+
+    /// How far the outermost fanned item, tilted, reaches past the folder's side.
+    private var fanRoom: CGFloat {
+        let reach = Self.spots.map { spot in
+            let angle = abs(spot.angle * Self.fanTilt) * .pi / 180
+            // Leaning on its bottom edge, the top corner swings out by the item's height.
+            return abs(spot.x) * Self.fanSpread + Self.itemSize / 2 * cos(angle) + Self.itemSize * sin(angle) + 6
+        }.max() ?? 0
+        return max(0, reach * CGFloat(itemScale) - Self.width / 2) * scale + 4
     }
 
     private var papers: some View {
-        let shown = Array(items.prefix(5).enumerated())
+        let shown = Array(items.prefix(Self.spots.count).enumerated())
         // The fan spreads with the items, so bigger items don't crowd each other.
         let spread = scale * CGFloat(itemScale)
         return ZStack(alignment: .bottom) {
@@ -117,9 +135,9 @@ struct FolderIcon: View {
                 ItemGlyph(item: item, size: itemSize, natural: true)
                     .rotationEffect(.degrees(spot.angle * (isOpen ? Self.fanTilt : 1)), anchor: .bottom)
                     .offset(x: spot.x * spread * (isOpen ? Self.fanSpread : 1),
-                            y: (spot.y - (isOpen ? Self.rise : 0)) * scale)
+                            y: (spot.y - (isOpen ? Self.rise + Self.extraRise[index % 3] : 0)) * scale)
                     // A small stagger, so they slide up one after another.
-                    .animation(PanelController.animation.delay(Double(index) * 0.025), value: isOpen)
+                    .animation(PanelController.animation.delay(Double(index) * 0.015), value: isOpen)
             }
         }
         // At rest their tops sit just under the back's top edge, whatever their size.

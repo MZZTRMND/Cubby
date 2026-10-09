@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Cubby's settings: how big the folder and its items are.
 struct SettingsView: View {
-    @AppStorage(FolderIcon.folderScaleKey) private var folderScale = 1.0
+    @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
 
     var body: some View {
@@ -16,10 +16,10 @@ struct SettingsView: View {
                 HStack {
                     Spacer()
                     Button("Reset") {
-                        folderScale = 1
+                        folderScale = FolderIcon.defaultFolderScale
                         itemScale = 1
                     }
-                    .disabled(folderScale == 1 && itemScale == 1)
+                    .disabled(folderScale == FolderIcon.defaultFolderScale && itemScale == 1)
                 }
             }
         }
