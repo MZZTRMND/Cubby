@@ -6,10 +6,13 @@ struct CubbyApp: App {
     @NSApplicationDelegateAdaptor private var app: AppDelegate
 
     var body: some Scene {
-        MenuBarExtra("Cubby", systemImage: "tray") {
+        MenuBarExtra {
             MenuContent()
                 .environment(app.store)
                 .environment(app.panel)
+        } label: {
+            Image(nsImage: MenuBarIcon.image)
+                .accessibilityLabel("Cubby")
         }
         Settings {
             SettingsView()
