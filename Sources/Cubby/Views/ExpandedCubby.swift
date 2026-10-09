@@ -8,12 +8,12 @@ struct ExpandedCubby: View {
     @Environment(CubbyStore.self) private var store
     @Environment(PanelController.self) private var panel
 
-    static let columnCount = 3
+    static let columnCount = 4
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: columnCount)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 40, style: .continuous)
-        let sorted = store.sorted(items)
+        let sorted = store.shown(items)
         // Everything that sets up the scroll view stays inside the reader.
         ScrollViewReader { proxy in
             ScrollView {
@@ -46,17 +46,18 @@ struct ExpandedCubby: View {
             // The system's progressive blur where items scroll under the header and footer.
             .scrollEdgeEffectStyle(.soft, for: .vertical)
             .safeAreaBar(edge: .top) {
-                VStack(spacing: 10) {
-                    header
+                VStack(spacing: 12) {
+                    topBar
                     if !store.missingNames.isEmpty {
                         MissingNotice(names: store.missingNames) {
                             withAnimation(PanelController.animation) { store.missingNames = [] }
                         }
+                        .padding(.horizontal, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
                 .padding(.bottom, 8)
                 .animation(PanelController.animation, value: store.missingNames)
             }
@@ -74,6 +75,16 @@ struct ExpandedCubby: View {
             if isTargeted { shape.stroke(.tint, lineWidth: 2) }
         }
         .onAppear { store.tidy() }
+        // A tab whose last item left goes back to All.
+        .onChange(of: kinds) { _, kinds in
+            if let kind = store.kindFilter, !kinds.contains(kind) { store.kindFilter = nil }
+        }
+    }
+
+    /// The kinds there are items of, in tab order. Empty kinds get no tab.
+    private var kinds: [ItemKind] {
+        let present = Set(items.map(\.kind))
+        return ItemKind.tabOrder.filter(present.contains)
     }
 
     /// Dragging a selected item takes the whole selection along, the item under the
@@ -101,25 +112,25 @@ struct ExpandedCubby: View {
         .allowsHitTesting(false)
     }
 
-    private var header: some View {
-        HStack(spacing: 8) {
-            Text(items.count, format: .number)
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button {
-                panel.collapse()
-            } label: {
-                Image(systemName: "arrow.down.right.and.arrow.up.left")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
+    /// "Cubby" on the left, the close button on the right, then the tabs with their counts.
+    private var topBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center) {
+                Text("Cubby")
+                    .font(.system(size: 22, weight: .bold))
+                    .padding(.leading, 8)
+                Spacer(minLength: 0)
+                CloseButton { panel.collapse() }
             }
-            .buttonStyle(.plain)
-            .help("Minimize")
+            if !items.isEmpty {
+                KindTabs(
+                    kinds: kinds,
+                    total: items.count,
+                    counts: Dictionary(grouping: items, by: \.kind).mapValues(\.count),
+                    selection: Bindable(store).kindFilter
+                )
+            }
         }
-        .font(.title3)
     }
 
     private var actions: some View {
@@ -182,6 +193,82 @@ private struct MissingNotice: View {
         } else {
             "\(names.count) items are no longer here. Their files were moved or deleted outside Cubby."
         }
+    }
+}
+
+/// A round Liquid Glass button that closes the card back into the folder, like the
+/// + button in StickyToDo's header: it grows a little under the pointer.
+private struct CloseButton: View {
+    let action: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 18, weight: .medium))
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.extraLarge)
+        .help("Close")
+        .accessibilityLabel("Close")
+        .scaleEffect(isHovered ? 1.1 : 1)
+        .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isHovered)
+        .onHover { isHovered = $0 }
+        .pointingHandCursor()
+    }
+}
+
+/// A row of pills, one per kind of item, after All, each with how many there are. Native
+/// Liquid Glass button styles do the styling: `.glass` at rest, `.glassProminent` in the
+/// accent color when chosen, the same as the category tabs in StickyToDo. When every
+/// kind is there and the row doesn't fit, it falls back to smaller pills.
+private struct KindTabs: View {
+    let kinds: [ItemKind]
+    let total: Int
+    let counts: [ItemKind: Int]
+    @Binding var selection: ItemKind?
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            row.controlSize(.regular)
+            row.controlSize(.small)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var row: some View {
+        HStack(spacing: 6) {
+            tab("All", count: total, kind: nil)
+            ForEach(kinds, id: \.self) { tab($0.pluralTitle, count: counts[$0] ?? 0, kind: $0) }
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder
+    private func tab(_ title: String, count: Int, kind: ItemKind?) -> some View {
+        let isSelected = selection == kind
+        let choose = { withAnimation(.easeInOut(duration: 0.12)) { selection = kind } }
+        let label = HStack(spacing: 4) {
+            Text(title)
+            Text(count, format: .number)
+                .monospacedDigit()
+                .opacity(0.55)
+        }
+        Group {
+            if isSelected {
+                Button(action: choose) { label }
+                    .buttonStyle(.glassProminent)
+            } else {
+                Button(action: choose) { label }
+                    .buttonStyle(.glass)
+            }
+        }
+        .buttonBorderShape(.capsule)
+        .font(.system(size: 13))
+        .lineLimit(1)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .pointingHandCursor()
     }
 }
 

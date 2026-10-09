@@ -160,7 +160,7 @@ struct StoreTests {
             await store.add([.file(url)], moveFiles: false).value
         }
         await paste { $0.setString("note", forType: .string) }
-        let order = store.allItems()
+        let order = store.shownItems()
         let ids = order.map(\.id)
 
         store.select(ids[1], extending: false, in: ids)
@@ -215,11 +215,34 @@ struct StoreTests {
         #expect(undo.redoActionName == "Clear")
     }
 
+    @Test func tabsShowOneKindAndClearOnlyThat() async {
+        await paste { $0.setString("https://example.com", forType: .string) }
+        await paste { $0.setString("#ff0000", forType: .string) }
+        await paste { $0.setString("hello", forType: .string) }
+        defer { store.kindFilter = nil }
+
+        store.kindFilter = .color
+        #expect(store.shownItems().map(\.text) == ["#ff0000"])
+        store.selectAll()
+        #expect(store.selection.count == 1)
+        store.kindFilter = .text
+        #expect(store.selection.isEmpty)
+
+        store.clear()
+        #expect(Set(items.map(\.kind)) == [.link, .color])
+
+        // Anything added goes back to All, so you see it arrive.
+        store.kindFilter = .link
+        await paste { $0.setString("another", forType: .string) }
+        #expect(store.kindFilter == nil)
+        #expect(store.shownItems().count == 3)
+    }
+
     @Test func arrowKeysWalkTheGrid() async {
         // Five items in three columns:  0 1 2
         //                               3 4
         for text in ["e", "d", "c", "b", "a"] { await paste { $0.setString(text, forType: .string) } }
-        let ids = store.allItems().map(\.id)
+        let ids = store.shownItems().map(\.id)
         func move(_ direction: CubbyStore.Direction, extending: Bool = false) {
             store.moveSelection(direction, columns: 3, extending: extending)
         }

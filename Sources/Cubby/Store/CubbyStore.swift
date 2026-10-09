@@ -28,6 +28,10 @@ final class CubbyStore {
     /// The items being dragged out of the open cubby, if any. Dropping them back onto the
     /// cubby does nothing.
     var draggedItemIDs: Set<UUID> = []
+    /// The tab the open cubby is on: one kind of item, or everything.
+    var kindFilter: ItemKind? {
+        didSet { if kindFilter != oldValue { clearSelection() } }
+    }
     /// Items picked with ⌘- or ⇧-click in the open cubby.
     var selection: Set<UUID> = []
     /// Where a ⇧-click range starts.
@@ -81,7 +85,9 @@ final class CubbyStore {
 
     @discardableResult
     func add(_ incoming: [Incoming], moveFiles: Bool = false) -> Task<Void, Never> {
-        Task {
+        // Whatever comes in should be seen arriving, whatever tab you're on.
+        kindFilter = nil
+        return Task {
             for item in incoming {
                 switch item {
                 case .text(let string): addString(string)
@@ -215,6 +221,11 @@ final class CubbyStore {
     // MARK: - Order
 
     /// The items in the open cubby's grid order.
+    /// The items under the chosen tab, in grid order.
+    func shown(_ items: [CubbyItem]) -> [CubbyItem] {
+        sorted(kindFilter.map { kind in items.filter { $0.kind == kind } } ?? items)
+    }
+
     func sorted(_ items: [CubbyItem]) -> [CubbyItem] {
         switch sortOrder {
         case .dateAdded:
@@ -238,9 +249,9 @@ final class CubbyStore {
         moveToBin([item], actionName: "Remove")
     }
 
-    /// Moves every item's file to the Bin and empties the cubby. ⌘Z brings it all back.
+    /// Moves everything under the current tab to the Bin. ⌘Z brings it all back.
     func clear() {
-        moveToBin(allItems(), actionName: "Clear")
+        moveToBin(shownItems(), actionName: "Clear")
     }
 
     func moveToBin(_ item: CubbyItem) {
@@ -325,7 +336,7 @@ final class CubbyStore {
 
     /// How many items Clear would remove.
     func clearableCount() -> Int {
-        (try? context.fetchCount(FetchDescriptor<CubbyItem>())) ?? 0
+        shownItems().count
     }
 
     /// Drops items whose file is gone, e.g. moved out to Finder. Runs at launch and when
@@ -434,7 +445,7 @@ final class CubbyStore {
     /// it, or with `extending` (⇧), selecting everything from the anchor to it. With
     /// nothing picked yet, the first arrow picks the item under the pointer or the first.
     func moveSelection(_ direction: Direction, columns: Int, extending: Bool) {
-        let order = allItems().map(\.id)
+        let order = shownItems().map(\.id)
         guard !order.isEmpty else { return }
         let target: UUID
         if let cursor = cursorID, let index = order.firstIndex(of: cursor) {
@@ -465,11 +476,11 @@ final class CubbyStore {
 
     /// The selected items in grid order.
     func selectedItems() -> [CubbyItem] {
-        allItems().filter { selection.contains($0.id) }
+        shownItems().filter { selection.contains($0.id) }
     }
 
     func selectAll() {
-        selection = Set(allItems().map(\.id))
+        selection = Set(shownItems().map(\.id))
     }
 
     func clearSelection() {
@@ -492,9 +503,9 @@ final class CubbyStore {
 
     // MARK: - Item actions
 
-    /// Every item in grid order.
-    func allItems() -> [CubbyItem] {
-        sorted((try? context.fetch(FetchDescriptor<CubbyItem>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))) ?? [])
+    /// The items the open cubby shows, under the chosen tab, in grid order.
+    func shownItems() -> [CubbyItem] {
+        shown((try? context.fetch(FetchDescriptor<CubbyItem>())) ?? [])
     }
 
     private func item(withID id: UUID) -> CubbyItem? {

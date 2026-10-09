@@ -77,7 +77,7 @@ final class PanelController {
     /// Transparent space around the content, for shadows and items rising out of the folder.
     static let inset: CGFloat = 16
     /// The open card, without the inset.
-    static let expandedSize = CGSize(width: 380, height: 440)
+    static let expandedSize = CGSize(width: 440, height: 440)
     static let animation = Animation.spring(duration: 0.45, bounce: 0.2)
 
     init(store: CubbyStore, container: ModelContainer) {
@@ -220,7 +220,7 @@ final class PanelController {
 
     /// Previews what Space would, or closes Quick Look when that's nothing.
     private func refreshQuickLook() {
-        let urls = store.quickLookURLs(in: store.allItems())
+        let urls = store.quickLookURLs(in: store.shownItems())
         urls.isEmpty ? QuickLook.shared.close() : QuickLook.shared.show(urls)
     }
 
@@ -257,12 +257,12 @@ final class PanelController {
         panel.displayIfNeeded()
     }
 
-    /// Asks before Clear moves everything to the Bin.
+    /// Asks before Clear moves everything under the current tab to the Bin.
     func confirmClear() {
         let count = store.clearableCount()
         guard count > 0 else { return }
         let alert = NSAlert()
-        alert.messageText = "Clear the cubby?"
+        alert.messageText = store.kindFilter.map { "Clear \($0.pluralTitle)?" } ?? "Clear the cubby?"
         alert.informativeText = count == 1
             ? "1 item will be moved to the Bin. You can undo this with \u{2318}Z."
             : "\(count) items will be moved to the Bin. You can undo this with \u{2318}Z."

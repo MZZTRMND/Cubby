@@ -5,6 +5,21 @@ enum ItemKind: String, Codable {
     case color, link, image, file, text
 }
 
+extension ItemKind {
+    /// The order of the tabs in the open cubby.
+    static let tabOrder: [ItemKind] = [.image, .file, .link, .color, .text]
+
+    var pluralTitle: String {
+        switch self {
+        case .image: "Images"
+        case .file: "Files"
+        case .link: "Links"
+        case .color: "Colors"
+        case .text: "Text"
+        }
+    }
+}
+
 @Model
 final class CubbyItem {
     @Attribute(.unique) var id: UUID
