@@ -1,19 +1,19 @@
 import AppKit
 
-/// A borderless, non-activating floating panel: dropping onto it or clicking it never
-/// pulls focus away from the app you're working in.
-final class ShelfPanel: NSPanel {
+/// A borderless window that behaves like any other: clicking it brings Cubby forward, and
+/// other windows can cover it. Dropping onto it doesn't take focus, as with any window.
+final class CubbyPanel: NSPanel {
     var onCancel: (() -> Void)?
+    /// The press that started the current drag, which `performDrag(with:)` needs.
+    private(set) var lastMouseDown: NSEvent?
 
     init() {
         super.init(
             contentRect: .zero,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
-        isFloatingPanel = true
-        level = .floating
         backgroundColor = .clear
         isOpaque = false
         // The system shadow is computed from the window's shape and goes stale while the
@@ -21,11 +21,15 @@ final class ShelfPanel: NSPanel {
         hasShadow = false
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     }
 
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
+    override var canBecomeMain: Bool { true }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown { lastMouseDown = event }
+        super.sendEvent(event)
+    }
 
     /// Esc.
     override func cancelOperation(_ sender: Any?) { onCancel?() }

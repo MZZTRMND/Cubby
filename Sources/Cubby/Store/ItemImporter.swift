@@ -2,9 +2,9 @@ import AppKit
 import OSLog
 import UniformTypeIdentifiers
 
-let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.shelf.app.dev", category: "import")
+let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.cubby.app.dev", category: "import")
 
-/// Something dropped or pasted, before it becomes a `ShelfItem`.
+/// Something dropped or pasted, before it becomes a `CubbyItem`.
 enum Incoming {
     case file(URL)
     case image(Data, UTType, name: String?)

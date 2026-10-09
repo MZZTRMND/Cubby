@@ -1,5 +1,5 @@
 import Testing
-@testable import Shelf
+@testable import Cubby
 
 struct ColorParserTests {
     private func rgba(_ s: String) -> [Double]? {

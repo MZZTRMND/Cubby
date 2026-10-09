@@ -2,21 +2,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "Shelf",
+    name: "Cubby",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "Shelf", targets: ["Shelf"])
+        .executable(name: "Cubby", targets: ["Cubby"])
     ],
     targets: [
         .executableTarget(
-            name: "Shelf",
-            path: "Sources/Shelf",
+            name: "Cubby",
+            path: "Sources/Cubby",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(
-            name: "ShelfTests",
-            dependencies: ["Shelf"],
-            path: "Tests/ShelfTests",
+            name: "CubbyTests",
+            dependencies: ["Cubby"],
+            path: "Tests/CubbyTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]

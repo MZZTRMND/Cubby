@@ -3,18 +3,18 @@ import Foundation
 import SwiftData
 import Testing
 import UniformTypeIdentifiers
-@testable import Shelf
+@testable import Cubby
 
 /// Runs the store against an in-memory container, private pasteboards, a temporary
 /// "Desktop" and a fake Trash, so none of the user's data, clipboard or Trash is touched.
 @MainActor @Suite(.serialized)
 struct StoreTests {
     @Test func usesItsOwnFolder() {
-        #expect(!["com.shelf.app", "com.shelf.app.test"].contains(AppPaths.support.lastPathComponent))
+        #expect(!["com.cubby.app", "com.cubby.app.test"].contains(AppPaths.support.lastPathComponent))
     }
 
     let container: ModelContainer
-    let store: ShelfStore
+    let store: CubbyStore
     let desktop: URL
     let trashed = Box<[URL]>([])
 
@@ -22,23 +22,22 @@ struct StoreTests {
 
     init() throws {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        container = try ModelContainer(for: ShelfItem.self, configurations: config)
-        desktop = FileManager.default.temporaryDirectory.appending(path: "shelf-desktop-\(UUID().uuidString)")
+        container = try ModelContainer(for: CubbyItem.self, configurations: config)
+        desktop = FileManager.default.temporaryDirectory.appending(path: "cubby-desktop-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true)
         let trashed = trashed
-        store = ShelfStore(context: container.mainContext, movableFolders: [desktop]) { url in
+        store = CubbyStore(context: container.mainContext, movableFolders: [desktop]) { url in
             trashed.value.append(url)
             try? FileManager.default.removeItem(at: url)
         }
     }
 
-    private var items: [ShelfItem] {
-        let all = (try? store.context.fetch(FetchDescriptor<ShelfItem>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))) ?? []
-        return store.visible(all)
+    private var items: [CubbyItem] {
+        (try? store.context.fetch(FetchDescriptor<CubbyItem>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)]))) ?? []
     }
 
     private func paste(_ write: (NSPasteboard) -> Void) async {
-        let pasteboard = NSPasteboard(name: .init("shelf.tests.\(UUID().uuidString)"))
+        let pasteboard = NSPasteboard(name: .init("cubby.tests.\(UUID().uuidString)"))
         pasteboard.clearContents()
         write(pasteboard)
         await store.add(ItemImporter.incoming(from: pasteboard)).value
@@ -54,7 +53,7 @@ struct StoreTests {
     }
 
     @Test func filesAndImagesAreCopiedIntoTheContainer() async throws {
-        let source = FileManager.default.temporaryDirectory.appending(path: "shelf-test-\(UUID().uuidString).txt")
+        let source = FileManager.default.temporaryDirectory.appending(path: "cubby-test-\(UUID().uuidString).txt")
         try "notes".write(to: source, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: source) }
 
@@ -73,22 +72,17 @@ struct StoreTests {
         #expect(!FileManager.default.fileExists(atPath: copy.path))
     }
 
-    @Test func clearCanBeUndone() async {
-        await paste { $0.setString("one", forType: .string) }
-        await paste { $0.setString("two", forType: .string) }
-        store.clear()
-        #expect(items.isEmpty && store.canUndoClear)
-        store.undoClear()
-        #expect(items.count == 2)
-    }
+    @Test func clearMovesEveryFileToTheBin() async throws {
+        let source = desktop.appending(path: "copy.txt")
+        try "x".write(to: source, atomically: true, encoding: .utf8)
+        await store.add([.file(source)]).value
+        await paste { $0.setString("note", forType: .string) }
+        #expect(store.clearableCount() == 2)
 
-    @Test func pinnedItemsSurviveClear() async {
-        await paste { $0.setString("keep", forType: .string) }
-        await paste { $0.setString("other", forType: .string) }
-        store.togglePin(items.first { $0.text == "keep" }!)
+        let before = trashed.value.count
         store.clear()
-        #expect(items.map(\.text) == ["keep"])
-        store.undoClear()
+        #expect(items.isEmpty)
+        #expect(trashed.value.dropFirst(before).map(\.lastPathComponent) == ["copy.txt"])
     }
 
     @Test func dragOutHandsOverTheFileLinkOrText() async throws {
@@ -98,20 +92,11 @@ struct StoreTests {
         try "x".write(to: source, atomically: true, encoding: .utf8)
         await store.add([.file(source)]).value
 
-        let drags = items.map(ShelfDragItem.init)
-        #expect(drags.map(\.movesOut) == [true, false, false])
-        #expect(drags[0].url == items[0].fileURL)
-        #expect(drags[2].url == URL(string: "https://apple.com"))
-
-        func types(_ drag: ShelfDragItem) -> [UTType] {
-            let provider = NSItemProvider()
-            provider.register(drag)
-            return provider.registeredContentTypes
-        }
-        #expect(types(drags[0]).contains { $0.conforms(to: .fileURL) })
-        #expect(!types(drags[0]).contains { $0.conforms(to: .plainText) })
-        #expect(types(drags[1]).contains { $0.conforms(to: .plainText) })
-        #expect(types(drags[2]).contains { $0.conforms(to: .url) })
+        #expect(items.map(store.movesOut) == [true, false, false])
+        #expect(store.pasteboardWriter(for: items[0]) as? URL == items[0].fileURL)
+        #expect(store.pasteboardWriter(for: items[1]) as? String == "#ff0000")
+        #expect(store.pasteboardWriter(for: items[2]) as? URL == URL(string: "https://apple.com"))
+        for item in items { store.remove(item) }
     }
 
     @Test func filesDroppedFromTheDesktopAreMovedAndTrashedOnRemove() async throws {
@@ -138,7 +123,7 @@ struct StoreTests {
         #expect(FileManager.default.fileExists(atPath: onDesktop.path))
         #expect(items.first?.isOriginal == false)
 
-        let elsewhere = FileManager.default.temporaryDirectory.appending(path: "shelf-elsewhere-\(UUID().uuidString).txt")
+        let elsewhere = FileManager.default.temporaryDirectory.appending(path: "cubby-elsewhere-\(UUID().uuidString).txt")
         try "x".write(to: elsewhere, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: elsewhere) }
         await store.add([.file(elsewhere)], moveFiles: true).value
@@ -149,21 +134,19 @@ struct StoreTests {
         #expect(trashed.value.count == before)
     }
 
-    @Test func itemsFillCanvasSlotsAndLandWhereDropped() async {
-        await paste { $0.setString("a", forType: .string) }
-        await paste { $0.setString("b", forType: .string) }
-        await store.add([.text("c")], at: CGPoint(x: 1000, y: 300)).value
+    @Test func sortOrderArrangesTheGrid() async {
+        await paste { $0.setString("banana", forType: .string) }
+        await paste { $0.setString("#ff0000", forType: .string) }
+        await paste { $0.setString("apple", forType: .string) }
+        let original = store.sortOrder
+        defer { store.sortOrder = original }
 
-        let byText = Dictionary(uniqueKeysWithValues: items.map { ($0.text, $0.canvasPosition) })
-        #expect(byText["a"] == CanvasLayout.slot(0))
-        #expect(byText["b"] == CanvasLayout.slot(1))
-        #expect(byText["c"] == CGPoint(x: CanvasLayout.width - CanvasLayout.cell.width / 2, y: 300))
-
-        let a = items.first { $0.text == "a" }!
-        store.move(a.id, to: CGPoint(x: -20, y: -20))
-        #expect(a.canvasPosition == CGPoint(x: CanvasLayout.cell.width / 2, y: CanvasLayout.cell.height / 2))
-        await paste { $0.setString("d", forType: .string) }
-        #expect(items.first { $0.text == "d" }?.canvasPosition == CanvasLayout.slot(2))
+        store.sortOrder = .dateAdded
+        #expect(store.sorted(items).map(\.text) == ["apple", "#ff0000", "banana"])
+        store.sortOrder = .name
+        #expect(store.sorted(items).map(\.text) == ["#ff0000", "apple", "banana"])
+        store.sortOrder = .kind
+        #expect(store.sorted(items).map(\.text) == ["#ff0000", "apple", "banana"])
     }
 
     @Test func itemsWhoseFileWasMovedAwayAreDropped() async throws {
@@ -200,18 +183,85 @@ struct StoreTests {
         #expect(!FileManager.default.fileExists(atPath: onDesktop.path))
     }
 
-    @Test func draggingAnIconBackOntoTheShelfMovesItInsteadOfCopying() async throws {
+    @Test func droppingACubbyFileBackOntoTheCubbyAddsNothing() async throws {
         let onDesktop = desktop.appending(path: "photo.png")
         let png = try #require(ImageData.png(from: NSImage(systemSymbolName: "star", accessibilityDescription: nil)!.tiffRepresentation!))
         try png.write(to: onDesktop)
         await store.add([.file(onDesktop)], moveFiles: true).value
-        let item = try #require(items.first)
-        let stored = try #require(item.fileURL)
+        let stored = try #require(items.first?.fileURL)
 
         let incoming = await ItemImporter.incoming(from: [finderProvider(for: stored, type: "public.png")])
-        await store.add(incoming, moveFiles: true, at: CGPoint(x: 200, y: 300)).value
+        await store.add(incoming, moveFiles: true).value
         #expect(items.count == 1)
-        #expect(item.canvasPosition == CGPoint(x: 200, y: 300))
         #expect(FileManager.default.fileExists(atPath: stored.path))
+    }
+
+    @Test func filesDraggedOutLeaveTheCubby() async throws {
+        for name in ["moved.txt", "copied.txt", "cancelled.txt"] {
+            let source = desktop.appending(path: name)
+            try name.write(to: source, atomically: true, encoding: .utf8)
+            await store.add([.file(source)]).value
+        }
+        let byName = Dictionary(uniqueKeysWithValues: items.map { ($0.fileName!, $0) })
+
+        // Finder moves the file a moment after the drop; the item leaves at once anyway.
+        store.dragEnded(byName["moved.txt"]!.id, delivered: true)
+        #expect(!items.contains { $0.fileName == "moved.txt" })
+
+        // A receiver that copied it: the item leaves at once, the leftover file later.
+        let copied = byName["copied.txt"]!.fileURL!
+        store.dragEnded(byName["copied.txt"]!.id, delivered: true)
+        #expect(!items.contains { $0.fileName == "copied.txt" })
+        #expect(FileManager.default.fileExists(atPath: copied.path))
+
+        store.dragEnded(byName["cancelled.txt"]!.id, delivered: false)
+        await paste { $0.setString("a note", forType: .string) }
+        store.dragEnded(items.first { $0.kind == .text }!.id, delivered: true)
+
+        try await Task.sleep(for: .seconds(3.3))
+        #expect(!FileManager.default.fileExists(atPath: copied.deletingLastPathComponent().path))
+        #expect(Set(items.compactMap(\.fileName)) == ["cancelled.txt"])
+        #expect(items.contains { $0.kind == .text })
+        for item in items { store.remove(item) }
+    }
+
+    private func addFile(_ name: String, contents: String = "x") async throws -> CubbyItem {
+        let source = FileManager.default.temporaryDirectory.appending(path: "cubby-src-\(UUID().uuidString)").appending(path: name)
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try contents.write(to: source, atomically: true, encoding: .utf8)
+        await store.add([.file(source)]).value
+        return try #require(items.first { $0.fileName == name })
+    }
+
+    @Test func moveToDesktopPutsTheFileBackUnderAFreeName() async throws {
+        try "already here".write(to: desktop.appending(path: "report.txt"), atomically: true, encoding: .utf8)
+        let item = try await addFile("report.txt", contents: "from the cubby")
+        store.moveToDesktop(item)
+        #expect(items.isEmpty)
+        #expect(try String(contentsOf: desktop.appending(path: "report 2.txt"), encoding: .utf8) == "from the cubby")
+    }
+
+    @Test func renameDuplicateAndMoveToBin() async throws {
+        let item = try await addFile("draft.txt", contents: "hello")
+        #expect(store.rename(item, to: "final.txt"))
+        #expect(item.fileName == "final.txt" && item.fileURL?.lastPathComponent == "final.txt")
+        #expect(!store.rename(item, to: "bad/name"))
+
+        store.duplicate(item)
+        let copy = try #require(items.first { $0.fileName == "final copy.txt" })
+        #expect(try String(contentsOf: copy.fileURL!, encoding: .utf8) == "hello")
+
+        let before = trashed.value.count
+        store.moveToBin(copy)
+        #expect(trashed.value.dropFirst(before).map(\.lastPathComponent) == ["final copy.txt"])
+        store.remove(item)
+    }
+
+    @Test func compressAddsAZipToTheCubby() async throws {
+        let item = try await addFile("notes.txt", contents: String(repeating: "cubby ", count: 200))
+        await store.compress(item).value
+        let zip = try #require(items.first { $0.fileName == "notes.txt.zip" })
+        #expect(zip.kind == .file && !zip.isOriginal && zip.fileSize > 0)
+        for item in items { store.remove(item) }
     }
 }
