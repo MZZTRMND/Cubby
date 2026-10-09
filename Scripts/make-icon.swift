@@ -1,5 +1,5 @@
-// Draws Cubby's app icon: a blue folder with a page inside on a light macOS icon tile, the
-// same folder as on the desktop. Writes every iconset size to the folder given, for
+// Draws Cubby's app icon: a gray folder with a page inside and a frosted front, on a light
+// macOS icon tile, the same folder as on the desktop. Writes every iconset size to the folder given, for
 // iconutil.
 //
 //   swift Scripts/make-icon.swift <out.iconset>
@@ -50,32 +50,36 @@ struct Icon: View {
                             cornerRadius: 185, style: .continuous)
             var shadowed = context
             shadowed.addFilter(.shadow(color: .black.opacity(0.18), radius: 20, y: 10))
-            shadowed.fill(tile, with: .color(Color(white: 0.965)))
+            shadowed.fill(tile, with: .color(Color(white: 0.9)))
             context.fill(tile, with: .linearGradient(
-                Gradient(colors: [Color(white: 0.975), Color(white: 0.955)]),
+                Gradient(colors: [Color(white: 0.93), Color(white: 0.86)]),
                 startPoint: p(0, 0), endPoint: p(0, 1000)))
 
-            context.fill(back(left: 175, right: 825, top: 207, bottom: 700),
-                         with: .color(Color(red: 0.18, green: 0.43, blue: 0.96)))
+            // Grays like the desktop folder's system colors in light mode.
+            let backPath = back(left: 175, right: 825, top: 207, bottom: 775)
+            context.fill(backPath, with: .linearGradient(
+                Gradient(colors: [Color(white: 0.72), Color(white: 0.66)]),
+                startPoint: p(0, 207), endPoint: p(0, 775)))
+            context.stroke(backPath, with: .color(.black.opacity(0.1)), lineWidth: 3)
 
-            let page = CGRect(origin: p(242, 341), size: CGSize(width: 516 * unit, height: 300 * unit))
-            context.fill(Path(roundedRect: page, cornerRadius: 22 * unit, style: .continuous),
-                         with: .color(Color(red: 0.95, green: 0.97, blue: 0.99)))
+            let page = Path(roundedRect: CGRect(origin: p(242, 341), size: CGSize(width: 516 * unit, height: 420 * unit)),
+                            cornerRadius: 22 * unit, style: .continuous)
+            context.fill(page, with: .color(.white))
+            context.stroke(page, with: .color(.black.opacity(0.08)), lineWidth: 2)
 
+            // The front stands in for frosted glass: milky and see-through, with a bright
+            // top edge, so the page and back show faintly behind it.
             let pocket = front(left: 145, right: 855, top: 408, bottom: 790, taper: 27)
             var dropped = context
-            dropped.addFilter(.shadow(color: .black.opacity(0.14), radius: 28, y: 18))
-            dropped.fill(pocket, with: .color(Color(red: 0.1, green: 0.6, blue: 0.94)))
+            dropped.addFilter(.shadow(color: .black.opacity(0.16), radius: 28, y: 18))
+            dropped.fill(pocket, with: .color(Color(white: 0.9).opacity(0.4)))
             context.fill(pocket, with: .linearGradient(
-                Gradient(colors: [Color(red: 0.29, green: 0.71, blue: 0.95), Color(red: 0.1, green: 0.6, blue: 0.94)]),
+                Gradient(colors: [Color(white: 0.99).opacity(0.86), Color(white: 0.95).opacity(0.92)]),
                 startPoint: p(0, 408), endPoint: p(0, 790)))
-            // The sides run a deeper blue than the middle.
-            let edge = Color(red: 0.1, green: 0.55, blue: 0.93).opacity(0.55)
-            context.fill(pocket, with: .linearGradient(
-                Gradient(stops: [.init(color: edge, location: 0), .init(color: edge.opacity(0.4), location: 0.14),
-                                 .init(color: edge.opacity(0), location: 0.38), .init(color: edge.opacity(0), location: 0.62),
-                                 .init(color: edge.opacity(0.4), location: 0.86), .init(color: edge, location: 1)]),
-                startPoint: p(145, 0), endPoint: p(855, 0)))
+            context.stroke(pocket, with: .linearGradient(
+                Gradient(colors: [.white, .white.opacity(0.3)]),
+                startPoint: p(0, 408), endPoint: p(0, 790)), lineWidth: 4)
+            context.stroke(pocket, with: .color(.black.opacity(0.06)), lineWidth: 1.5)
         }
         .frame(width: 1024, height: 1024)
     }
