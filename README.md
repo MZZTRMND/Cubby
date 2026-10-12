@@ -8,6 +8,10 @@ A little folder that lives on your Mac's desktop. Drop in files, images, screens
   <img src="docs/open.png" width="380" alt="Cubby opened, showing a grid of images and files with tabs">
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" width="480" alt="Cubby in action on the desktop">
+</p>
+
 ## What it does
 
 - **Keeps things close.** Cubby sits anywhere you like on the desktop as a small glass folder, with your newest items peeking out of the top.
