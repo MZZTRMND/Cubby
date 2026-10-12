@@ -247,7 +247,7 @@ final class CubbyStore {
     static func matches(_ item: CubbyItem, _ query: String) -> Bool {
         let query = query.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return true }
-        let names = [item.fileName, item.title, item.text, item.kind == .link ? item.domain : nil]
+        let names = [item.name, item.note, item.fileName, item.title, item.text, item.kind == .link ? item.domain : nil]
         return names.contains { $0?.localizedStandardContains(query) == true }
     }
 
@@ -265,7 +265,7 @@ final class CubbyStore {
     private static let kindOrder: [ItemKind: Int] = [.image: 0, .file: 1, .link: 2, .color: 3, .text: 4]
 
     private static func name(of item: CubbyItem) -> String {
-        item.fileName ?? item.title ?? item.text
+        item.name ?? item.fileName ?? item.title ?? item.text
     }
 
     // MARK: - Removing
@@ -296,6 +296,8 @@ final class CubbyStore {
         let thumbnail: Data?
         let favicon: Data?
         let isOriginal: Bool
+        let name: String?
+        let note: String?
         /// Where the file went in the Bin.
         let binned: URL?
     }
@@ -311,7 +313,8 @@ final class CubbyStore {
             let record = Removed(
                 id: item.id, kindRaw: item.kindRaw, addedAt: item.addedAt, text: item.text, title: item.title,
                 fileName: item.fileName, fileSize: item.fileSize, storedPath: item.storedPath,
-                thumbnail: item.thumbnail, favicon: item.favicon, isOriginal: item.isOriginal, binned: binned
+                thumbnail: item.thumbnail, favicon: item.favicon, isOriginal: item.isOriginal,
+                name: item.name, note: item.note, binned: binned
             )
             context.delete(item)
             return record
@@ -348,6 +351,8 @@ final class CubbyStore {
             item.thumbnail = record.thumbnail
             item.favicon = record.favicon
             item.isOriginal = record.isOriginal
+            item.name = record.name
+            item.note = record.note
             context.insert(item)
             restored.append(record.id)
         }
@@ -567,6 +572,13 @@ final class CubbyStore {
         }
     }
 
+    /// Copies a color written another way, such as rgb() or SwiftUI.
+    func copy(_ item: CubbyItem, as format: ColorFormat) {
+        guard let color = ColorParser.parse(item.text) else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(format.string(for: color), forType: .string)
+    }
+
     func revealInFinder(_ item: CubbyItem) {
         guard let url = item.fileURL else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])
@@ -662,6 +674,99 @@ final class CubbyStore {
         }
     }
 
+    /// Zips several items' files into one "Archive.zip" on the cubby, like Finder's
+    /// Compress with more than one item selected.
+    @discardableResult
+    func compress(_ items: [CubbyItem]) -> Task<Void, Never> {
+        let urls = items.compactMap(\.fileURL)
+        guard urls.count > 1 else { return items.first.map { compress($0) } ?? Task {} }
+        return Task {
+            let work = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+            let zip = work.appending(path: "Archive.zip")
+            let succeeded = await Task.detached {
+                let fm = FileManager.default
+                let folder = work.appending(path: "Archive")
+                do {
+                    try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+                    for url in urls {
+                        try fm.copyItem(at: url, to: Self.unusedURL(for: url.lastPathComponent, in: folder))
+                    }
+                } catch { return false }
+                let ditto = Process()
+                ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+                ditto.arguments = ["-c", "-k", "--sequesterRsrc", folder.path, zip.path]
+                guard (try? ditto.run()) != nil else { return false }
+                ditto.waitUntilExit()
+                return ditto.terminationStatus == 0
+            }.value
+            if succeeded { await addFile(zip, move: false) }
+            try? FileManager.default.removeItem(at: work)
+            try? context.save()
+        }
+    }
+
+    /// The formats Convert offers.
+    static let imageFormats: [UTType] = [.jpeg, .png, .heic]
+
+    /// Saves each image as `type`, as a new item next to it, like Finder's Convert Image.
+    @discardableResult
+    func convert(_ items: [CubbyItem], to type: UTType) -> Task<Void, Never> {
+        let ext = type == .jpeg ? "jpg" : type.preferredFilenameExtension ?? "png"
+        return transformImages(items) { url in
+            let base = url.deletingPathExtension().lastPathComponent
+            return (ImageData.convert(url, to: type), "\(base).\(ext)")
+        }
+    }
+
+    /// Saves each image at half its width and height, as a new item next to it.
+    @discardableResult
+    func shrink(_ items: [CubbyItem]) -> Task<Void, Never> {
+        transformImages(items) { url in
+            let type = UTType(filenameExtension: url.pathExtension) ?? .png
+            // Formats ImageIO can read but not write come out as PNG.
+            let writable = (CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(type.identifier)
+            let format = writable ? type : .png
+            let base = url.deletingPathExtension().lastPathComponent
+            let ext = writable ? url.pathExtension : "png"
+            return (ImageData.convert(url, to: format, scale: 0.5), "\(base) small.\(ext)")
+        }
+    }
+
+    private func transformImages(_ items: [CubbyItem],
+                                 _ transform: @escaping @Sendable (URL) -> (Data?, String)) -> Task<Void, Never> {
+        let urls = items.filter { $0.kind == .image }.compactMap(\.fileURL)
+        return Task {
+            for url in urls {
+                let work = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+                let output: URL? = await Task.detached {
+                    let (data, name) = transform(url)
+                    guard let data else { return nil }
+                    let output = work.appending(path: name)
+                    try? FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+                    return (try? data.write(to: output)) != nil ? output : nil
+                }.value
+                if let output { await addFile(output, move: false) }
+                try? FileManager.default.removeItem(at: work)
+            }
+            try? context.save()
+        }
+    }
+
+    /// Names a link, color or snippet; an empty name brings back its own. Files are
+    /// renamed with `rename(_:to:)`.
+    func setName(_ item: CubbyItem, to newName: String) {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.name = name.isEmpty ? nil : name
+        try? context.save()
+    }
+
+    /// An empty note removes it.
+    func setNote(_ item: CubbyItem, to newNote: String) {
+        let note = newNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.note = note.isEmpty ? nil : note
+        try? context.save()
+    }
+
     /// Opens Finder's Get Info window for the file.
     func showInfo(_ item: CubbyItem) {
         guard let url = item.fileURL else { return }
@@ -678,7 +783,7 @@ final class CubbyStore {
     }
 
     /// `name` in `folder`, or "name 2", "name 3"… if it's taken.
-    private static func unusedURL(for name: String, in folder: URL) -> URL {
+    private nonisolated static func unusedURL(for name: String, in folder: URL) -> URL {
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension
         var candidate = folder.appending(path: name)

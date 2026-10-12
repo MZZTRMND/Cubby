@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The open cubby: a glass card with the items in a grid, scrolling under a translucent
 /// header and footer.
@@ -332,12 +333,23 @@ private struct GridItemView: View {
     var body: some View {
         VStack(spacing: 8) {
             ItemGlyph(item: item, size: Self.iconSize, natural: true)
-            Text(showsCopied ? "Copied" : label)
-                .font(.callout)
-                .foregroundStyle(showsCopied ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                .lineLimit(1)
-                .truncationMode(.middle)
+            VStack(spacing: 1) {
+                Text(showsCopied ? "Copied" : item.label)
+                    .font(.callout)
+                    .foregroundStyle(showsCopied ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let note = item.note {
+                    Text(note)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .padding(.horizontal, 4)
         }
+        .help(item.note ?? "")
         .frame(maxWidth: .infinity)
         .padding(.vertical, 6)
         .background {
@@ -394,17 +406,23 @@ private struct GridItemView: View {
         return ActionMenuItem("Move \(files.count) Items to Desktop") { store.moveToDesktop(files) }
     }
 
-    /// Files get the same menu as on the Desktop, plus Move to Desktop. Links, colors
-    /// and text get a short one.
+    /// Files get the same menu as on the Desktop, plus Move to Desktop and, for images,
+    /// Quick Actions. Links, colors and text get a short one.
     private var menu: NSMenu {
         let menu = NSMenu()
         guard let url = item.fileURL else {
             if item.kind == .link { menu.addItem(ActionMenuItem("Open") { store.open(item) }) }
             menu.addItem(ActionMenuItem("Copy") { copy() })
+            if item.kind == .color, let copyAs = copyAsMenu { menu.addItem(copyAs) }
+            menu.addItem(shareItem)
+            menu.addItem(.separator())
+            menu.addItem(ActionMenuItem("Rename…") { panel.rename(item) })
+            menu.addItem(noteItem)
             menu.addItem(.separator())
             menu.addItem(removeGroupItem ?? ActionMenuItem("Remove") { store.remove(item) })
             return menu
         }
+        let files = group.filter { $0.fileURL != nil }
         menu.addItem(ActionMenuItem("Open") { store.open(item) })
         menu.addItem(openWithMenu(for: url))
         menu.addItem(.separator())
@@ -413,15 +431,74 @@ private struct GridItemView: View {
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Get Info") { store.showInfo(item) })
         menu.addItem(ActionMenuItem("Rename…") { panel.rename(item) })
-        menu.addItem(ActionMenuItem("Compress \u{201C}\(url.lastPathComponent)\u{201D}") { store.compress(item) })
+        menu.addItem(noteItem)
+        menu.addItem(files.count > 1
+            ? ActionMenuItem("Compress \(files.count) Items") { store.compress(files) }
+            : ActionMenuItem("Compress \u{201C}\(url.lastPathComponent)\u{201D}") { store.compress(item) })
         menu.addItem(ActionMenuItem("Duplicate") { store.duplicate(item) })
         menu.addItem(ActionMenuItem("Quick Look") { QuickLook.shared.show(url) })
+        if let quickActions = quickActionsMenu { menu.addItem(quickActions) }
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Copy") { copy() })
-        menu.addItem(NSSharingServicePicker(items: [url]).standardShareMenuItem)
+        menu.addItem(shareItem)
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Show in Finder") { store.revealInFinder(item) })
         return menu
+    }
+
+    private var noteItem: NSMenuItem {
+        ActionMenuItem(item.note == nil ? "Add Note…" : "Edit Note…") { panel.editNote(item) }
+    }
+
+    /// Share, with AirDrop among the rest, for the whole selection when this item is in it.
+    private var shareItem: NSMenuItem {
+        let things: [Any] = group.map { item in
+            if let url = item.fileURL { return url }
+            if item.kind == .link, let url = URL(string: item.text) { return url }
+            return item.text
+        }
+        return NSSharingServicePicker(items: things).standardShareMenuItem
+    }
+
+    /// The color written each way it can be copied; picking one copies it.
+    private var copyAsMenu: NSMenuItem? {
+        guard let color = ColorParser.parse(item.text) else { return nil }
+        let submenu = NSMenu()
+        for format in ColorFormat.allCases {
+            let menuItem = ActionMenuItem(format.string(for: color)) {
+                store.copy(item, as: format)
+                showCopied()
+            }
+            menuItem.subtitle = format.rawValue
+            submenu.addItem(menuItem)
+        }
+        let menuItem = NSMenuItem(title: "Copy As", action: nil, keyEquivalent: "")
+        menuItem.submenu = submenu
+        return menuItem
+    }
+
+    /// Convert and shrink the images in the selection, each into a new item, like
+    /// Finder's Quick Actions.
+    private var quickActionsMenu: NSMenuItem? {
+        let images = group.filter { $0.kind == .image && $0.fileURL != nil }
+        guard !images.isEmpty else { return nil }
+        let several = images.count > 1
+        let submenu = NSMenu()
+        for format in CubbyStore.imageFormats {
+            let name = format == .jpeg ? "JPEG" : (format.preferredFilenameExtension ?? "").uppercased()
+            // Converting a single image to its own format would only make a copy.
+            if !several, UTType(filenameExtension: images[0].fileURL!.pathExtension) == format { continue }
+            submenu.addItem(ActionMenuItem(several ? "Convert \(images.count) Images to \(name)" : "Convert to \(name)") {
+                store.convert(images, to: format)
+            })
+        }
+        submenu.addItem(.separator())
+        submenu.addItem(ActionMenuItem(several ? "Make \(images.count) Images Smaller" : "Make Smaller") {
+            store.shrink(images)
+        })
+        let menuItem = NSMenuItem(title: "Quick Actions", action: nil, keyEquivalent: "")
+        menuItem.submenu = submenu
+        return menuItem
     }
 
     /// The apps that can open the file, the default first, as in Finder.
@@ -447,14 +524,6 @@ private struct GridItemView: View {
         let menuItem = NSMenuItem(title: "Open With", action: nil, keyEquivalent: "")
         menuItem.submenu = submenu
         return menuItem
-    }
-
-    private var label: String {
-        switch item.kind {
-        case .link: item.title ?? item.domain
-        case .image, .file: item.fileName ?? item.text
-        case .color, .text: item.text
-        }
     }
 
     /// A plain click opens or copies; ⌘ or ⇧ picks the item instead.
@@ -489,6 +558,10 @@ private struct GridItemView: View {
 
     private func copy() {
         store.copy(item)
+        showCopied()
+    }
+
+    private func showCopied() {
         withAnimation(.easeOut(duration: 0.15)) { showsCopied = true }
         Task {
             try? await Task.sleep(for: .seconds(1.2))

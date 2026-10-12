@@ -434,6 +434,77 @@ struct StoreTests {
         store.remove(item)
     }
 
+    private func addImage(_ name: String) async throws -> CubbyItem {
+        let source = FileManager.default.temporaryDirectory.appending(path: "cubby-src-\(UUID().uuidString)").appending(path: name)
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let image = NSImage(size: NSSize(width: 40, height: 20), flipped: false) { rect in
+            NSColor.systemOrange.setFill()
+            rect.fill()
+            return true
+        }
+        let tiff = try #require(image.tiffRepresentation)
+        try #require(ImageData.png(from: tiff)).write(to: source)
+        await store.add([.file(source)]).value
+        return try #require(items.first { $0.fileName == name })
+    }
+
+    private func pixelWidth(_ item: CubbyItem) throws -> Int {
+        let url = try #require(item.fileURL)
+        let source = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        return try #require(properties[kCGImagePropertyPixelWidth] as? Int)
+    }
+
+    @Test func convertAndShrinkAddNewImages() async throws {
+        let photo = try await addImage("photo.png")
+        let width = try pixelWidth(photo)
+        await store.convert([photo], to: .jpeg).value
+        let jpeg = try #require(items.first { $0.fileName == "photo.jpg" })
+        #expect(jpeg.kind == .image && jpeg.thumbnail != nil && !jpeg.isOriginal)
+        #expect(try pixelWidth(jpeg) == width)
+
+        await store.shrink([photo]).value
+        let small = try #require(items.first { $0.fileName == "photo small.png" })
+        #expect(try pixelWidth(small) == width / 2)
+        #expect(items.count == 3)
+        for item in items { store.remove(item) }
+    }
+
+    @Test func compressingSeveralMakesOneArchive() async throws {
+        let one = try await addFile("one.txt")
+        let two = try await addFile("two.txt", contents: "yy")
+        await store.compress([one, two]).value
+        let zip = try #require(items.first { $0.fileName == "Archive.zip" })
+        #expect(zip.kind == .file && zip.fileSize > 0)
+        for item in items { store.remove(item) }
+    }
+
+    @Test func namesAndNotesShowAndAreFound() async throws {
+        await paste { $0.setString("#3366ff", forType: .string) }
+        let color = try #require(items.first)
+        store.setName(color, to: "  Brand blue ")
+        store.setNote(color, to: "for the header")
+        #expect(color.label == "Brand blue" && color.note == "for the header")
+
+        store.searchText = "brand"
+        #expect(store.shownItems().count == 1)
+        store.searchText = "header"
+        #expect(store.shownItems().count == 1)
+        store.searchText = ""
+
+        // Undo of a removal brings them back too.
+        let undo = UndoManager()
+        store.undoManager = undo
+        store.remove(color)
+        undo.undo()
+        let back = try #require(items.first)
+        #expect(back.label == "Brand blue" && back.note == "for the header")
+
+        store.setName(back, to: " ")
+        store.setNote(back, to: "")
+        #expect(back.label == "#3366ff" && back.note == nil)
+    }
+
     @Test func compressAddsAZipToTheCubby() async throws {
         let item = try await addFile("notes.txt", contents: String(repeating: "cubby ", count: 200))
         await store.compress(item).value

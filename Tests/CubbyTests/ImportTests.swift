@@ -46,3 +46,32 @@ struct ClassifyTests {
         #expect(ItemImporter.kind(of: "rgb is a color model") == .text)
     }
 }
+
+struct ColorFormatTests {
+    @Test func copiesEachWay() throws {
+        let blue = try #require(ColorParser.parse("#3366ff"))
+        #expect(ColorFormat.hex.string(for: blue) == "#3366FF")
+        #expect(ColorFormat.rgb.string(for: blue) == "rgb(51, 102, 255)")
+        #expect(ColorFormat.hsl.string(for: blue) == "hsl(225, 100%, 60%)")
+        #expect(ColorFormat.swiftUI.string(for: blue) == "Color(red: 0.2, green: 0.4, blue: 1)")
+    }
+
+    @Test func keepsTransparency() throws {
+        let red = try #require(ColorParser.parse("rgba(255, 0, 0, 0.5)"))
+        #expect(ColorFormat.hex.string(for: red) == "#FF000080")
+        #expect(ColorFormat.rgb.string(for: red) == "rgba(255, 0, 0, 0.5)")
+        #expect(ColorFormat.hsl.string(for: red) == "hsla(0, 100%, 50%, 0.5)")
+        #expect(ColorFormat.swiftUI.string(for: red) == "Color(red: 1, green: 0, blue: 0, opacity: 0.5)")
+    }
+
+    @Test func roundTrips() throws {
+        for input in ["#7a3e9d", "#00c8a0", "#808080"] {
+            let color = try #require(ColorParser.parse(input))
+            // HSL is written in whole percents, which can be a shade off.
+            for format in [ColorFormat.hex, .rgb] {
+                let back = try #require(ColorParser.parse(format.string(for: color)))
+                #expect(ColorFormat.hex.string(for: back) == input.uppercased(), "\(format) \(input)")
+            }
+        }
+    }
+}

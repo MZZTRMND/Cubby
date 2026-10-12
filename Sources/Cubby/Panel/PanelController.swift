@@ -77,6 +77,8 @@ final class PanelController {
     @ObservationIgnored private var isRaisedForDrag = false
     /// The drag carrying everything out of the folder, while it lasts.
     @ObservationIgnored private var dragOutSource: ItemDragSource?
+    @ObservationIgnored private lazy var dimmer = DimWindow()
+    @ObservationIgnored private var lowerTask: Task<Void, Never>?
 
     static let raiseOnDragKey = "raiseOnDrag"
 
@@ -318,22 +320,45 @@ final class PanelController {
         if run(alert) == .alertFirstButtonReturn { store.clear() }
     }
 
-    /// Asks for a new name, with the part before the extension selected, as in Finder.
+    /// Asks for a new name. A file is renamed on disk, with the part before the extension
+    /// selected, as in Finder; anything else gets a name of its own, and an empty one
+    /// brings back what it was called before.
     func rename(_ item: CubbyItem) {
-        guard let name = item.fileName else { return }
+        let isFile = item.fileURL != nil
+        let name = isFile ? item.fileName ?? item.text : item.label
         let field = NSTextField(string: name)
         field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
         let alert = NSAlert()
         alert.messageText = "Rename"
+        if !isFile, item.name != nil { alert.informativeText = "Leave it empty to go back to the original name." }
         alert.accessoryView = field
         alert.addButton(withTitle: "Rename")
         alert.addButton(withTitle: "Cancel")
         alert.window.initialFirstResponder = field
         DispatchQueue.main.async {
-            let base = (name as NSString).deletingPathExtension
+            let base = isFile ? (name as NSString).deletingPathExtension : name
             field.currentEditor()?.selectedRange = NSRange(location: 0, length: (base as NSString).length)
         }
-        if run(alert) == .alertFirstButtonReturn { store.rename(item, to: field.stringValue) }
+        guard run(alert) == .alertFirstButtonReturn else { return }
+        if isFile { store.rename(item, to: field.stringValue) } else { store.setName(item, to: field.stringValue) }
+    }
+
+    /// Asks for a few words to keep with the item. An empty note removes it.
+    func editNote(_ item: CubbyItem) {
+        let field = NSTextField(string: item.note ?? "")
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 64)
+        field.placeholderString = "Why it's here, what it's for…"
+        field.usesSingleLineMode = false
+        field.cell?.wraps = true
+        field.cell?.isScrollable = false
+        let alert = NSAlert()
+        alert.messageText = item.note == nil ? "Add Note" : "Edit Note"
+        alert.informativeText = "For \u{201C}\(item.label)\u{201D}"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        if run(alert) == .alertFirstButtonReturn { store.setNote(item, to: field.stringValue) }
     }
 
     /// Runs a modal alert without the card closing behind it.
@@ -436,8 +461,9 @@ final class PanelController {
 
     /// Watches for drags starting in other apps. A press that puts something on the drag
     /// pasteboard is a drag of files, links or text, not a window being moved, so the
-    /// folder comes out from behind other windows to take it, and goes back afterwards.
-    /// Watching mouse presses in other apps needs no special permission.
+    /// folder comes to the middle of the screen you're on, over a dimmed screen, to take
+    /// it, and goes back to its spot afterwards. Watching mouse presses in other apps
+    /// needs no special permission.
     private func installDragWatcher() {
         NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
             MainActor.assumeIsolated { self?.watchForDrag() }
@@ -445,7 +471,7 @@ final class PanelController {
     }
 
     private func watchForDrag() {
-        guard !isRaisedForDrag, isShown, !isPinnedOnTop, mode == .resting,
+        guard !isRaisedForDrag, isShown, mode == .resting, !isMoving,
               defaults.bool(forKey: Self.raiseOnDragKey)
         else { return }
         let start = NSPasteboard(name: .drag).changeCount
@@ -462,16 +488,39 @@ final class PanelController {
     }
 
     private func raiseForDrag() {
+        lowerTask?.cancel()
+        let mouse = NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? screen
+        else { return }
         isRaisedForDrag = true
-        panel.level = .floating
+        dimmer.fadeIn(on: screen)
+        // Just above the veil, and on whichever desktop you're on.
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let visible = screen.visibleFrame
+        slide(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible))
         panel.orderFrontRegardless()
     }
 
+    /// Back to its own spot once the drag is over, after a moment to see a drop land.
     private func lowerAfterDrag() {
         guard isRaisedForDrag else { return }
-        isRaisedForDrag = false
-        // It stays in front of the other windows until one of them is clicked.
-        applyPinning()
+        lowerTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard let self, !Task.isCancelled else { return }
+            self.isRaisedForDrag = false
+            self.dimmer.fadeOut()
+            self.applyPinning()
+            if self.mode != .expanded { self.slide(to: self.restingFrame()) }
+        }
+    }
+
+    private func slide(to frame: NSRect) {
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.35
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(frame, display: true)
+        }
     }
 
     // MARK: - Layout
@@ -481,7 +530,7 @@ final class PanelController {
     }
 
     private func placeFolder() {
-        guard mode != .expanded else { return }
+        guard mode != .expanded, !isRaisedForDrag else { return }
         panel.setFrame(restingFrame(), display: true)
     }
 

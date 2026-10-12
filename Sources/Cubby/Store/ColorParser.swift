@@ -88,3 +88,46 @@ enum ColorParser {
 
     private static func clamp(_ x: Double) -> Double { x.isNaN ? 0 : min(max(x, 0), 1) }
 }
+
+/// The ways a color can be copied, for Copy As.
+enum ColorFormat: String, CaseIterable {
+    case hex = "HEX", rgb = "RGB", hsl = "HSL", swiftUI = "SwiftUI"
+
+    func string(for c: ColorParser.RGBA) -> String {
+        let hasAlpha = c.a < 0.999
+        func byte(_ x: Double) -> Int { Int((x * 255).rounded()) }
+        func short(_ x: Double) -> String { x.formatted(.number.precision(.fractionLength(0...3)).locale(Locale(identifier: "en_US_POSIX"))) }
+        switch self {
+        case .hex:
+            let channels = [c.r, c.g, c.b] + (hasAlpha ? [c.a] : [])
+            return "#" + channels.map { String(format: "%02X", byte($0)) }.joined()
+        case .rgb:
+            let rgb = "\(byte(c.r)), \(byte(c.g)), \(byte(c.b))"
+            return hasAlpha ? "rgba(\(rgb), \(short(c.a)))" : "rgb(\(rgb))"
+        case .hsl:
+            let (h, s, l) = Self.hsl(c)
+            let hsl = "\(Int(h.rounded())), \(Int((s * 100).rounded()))%, \(Int((l * 100).rounded()))%"
+            return hasAlpha ? "hsla(\(hsl), \(short(c.a)))" : "hsl(\(hsl))"
+        case .swiftUI:
+            let rgb = "red: \(short(c.r)), green: \(short(c.g)), blue: \(short(c.b))"
+            return hasAlpha ? "Color(\(rgb), opacity: \(short(c.a)))" : "Color(\(rgb))"
+        }
+    }
+
+    private static func hsl(_ c: ColorParser.RGBA) -> (Double, Double, Double) {
+        let high = max(c.r, c.g, c.b), low = min(c.r, c.g, c.b)
+        let l = (high + low) / 2
+        let d = high - low
+        guard d > 0 else { return (0, 0, l) }
+        let s = d / (1 - abs(2 * l - 1))
+        var h: Double
+        switch high {
+        case c.r: h = ((c.g - c.b) / d).truncatingRemainder(dividingBy: 6)
+        case c.g: h = (c.b - c.r) / d + 2
+        default: h = (c.r - c.g) / d + 4
+        }
+        h *= 60
+        if h < 0 { h += 360 }
+        return (h, s, l)
+    }
+}
