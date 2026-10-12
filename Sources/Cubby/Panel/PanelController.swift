@@ -32,6 +32,9 @@ final class PanelController {
     /// screen, so the card can grow out of it and shrink back into it.
     private(set) var folderOffset: CGSize = .zero
 
+    /// Goes up each time the folder lands in the middle for a drag, so it can wiggle.
+    private(set) var summonCount = 0
+
     /// The folder's natural size including the inset, reported by SwiftUI.
     var restingSize = CGSize(width: 168, height: 172) {
         didSet { if restingSize != oldValue, mode != .expanded, !isMoving { placeFolder() } }
@@ -510,7 +513,13 @@ final class PanelController {
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let visible = screen.visibleFrame
-        slide(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible))
+        // A quick slide in, then a wiggle on landing that echoes the shake.
+        slide(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible),
+              duration: 0.3, timing: CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)) { [weak self] in
+            guard let self, self.isRaisedForDrag,
+                  !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+            self.summonCount += 1
+        }
         panel.orderFrontRegardless()
     }
 
@@ -527,11 +536,15 @@ final class PanelController {
         }
     }
 
-    private func slide(to frame: NSRect) {
+    private func slide(to frame: NSRect, duration: TimeInterval = 0.35,
+                       timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut),
+                       completion: (@MainActor () -> Void)? = nil) {
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.35
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            context.duration = duration
+            context.timingFunction = timing
             panel.animator().setFrame(frame, display: true)
+        } completionHandler: {
+            MainActor.assumeIsolated { completion?() }
         }
     }
 

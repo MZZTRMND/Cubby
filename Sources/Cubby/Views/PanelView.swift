@@ -37,6 +37,14 @@ struct PanelView: View {
                                 .onEnded { _ in panel.endMove() }
                         )
                         .coordinateSpace(.named(FolderIcon.space))
+                        // A wiggle once it lands in the middle for a drag; the inset leaves room.
+                        .keyframeAnimator(initialValue: 0.0, trigger: panel.summonCount) { folder, degrees in
+                            folder.rotationEffect(.degrees(degrees))
+                        } keyframes: { _ in
+                            for degrees in [-7.0, 6, -4, 2, 0] {
+                                CubicKeyframe(degrees, duration: 0.084)
+                            }
+                        }
                         .padding(PanelController.inset)
                         .onGeometryChange(for: CGSize.self, of: \.size) { panel.restingSize = $0 }
                         .offset(panel.folderOffset)
