@@ -92,6 +92,9 @@ final class PanelController {
     /// The open card, without the inset.
     static let expandedSize = CGSize(width: 440, height: 440)
     static let animation = Animation.spring(duration: 0.45, bounce: 0.2)
+    /// The card opens on a quick spring and closes faster still, like macOS panels.
+    static let openAnimation = Animation.spring(duration: 0.32, bounce: 0.15)
+    static let closeAnimation = Animation.easeIn(duration: 0.18)
 
     init(store: CubbyStore, container: ModelContainer) {
         self.store = store
@@ -162,7 +165,7 @@ final class PanelController {
         // Grow the window in one step, keeping the folder where it is on screen, then let
         // SwiftUI grow the card out of it.
         resize(to: card, folderOffset: CGSize(width: folder.midX - card.midX, height: card.midY - folder.midY))
-        withAnimation(Self.animation) { mode = .expanded }
+        withAnimation(Self.openAnimation) { mode = .expanded }
         panel.makeKey()
     }
 
@@ -175,7 +178,7 @@ final class PanelController {
         store.hoveredItemID = nil
         // You've seen the notice about missing files once the card has been open.
         if wasExpanded { store.missingNames = [] }
-        withAnimation(Self.animation, completionCriteria: .removed) {
+        withAnimation(Self.closeAnimation, completionCriteria: .removed) {
             mode = .resting
         } completion: { [weak self] in
             // Once the card has shrunk back into the folder, fit the window to the folder.

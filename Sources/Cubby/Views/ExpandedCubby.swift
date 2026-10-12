@@ -8,6 +8,11 @@ struct ExpandedCubby: View {
     let isTargeted: Bool
     @Environment(CubbyStore.self) private var store
     @Environment(PanelController.self) private var panel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// False for the first frame, so the tabs and items can cascade in as the card opens.
+    /// With Reduce Motion they're simply there.
+    @State private var hasAppeared = false
+    private var hasArrived: Bool { hasAppeared || reduceMotion }
 
     static let columnCount = 4
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: columnCount)
@@ -19,13 +24,15 @@ struct ExpandedCubby: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVGrid(columns: Self.columns, spacing: 8) {
-                    ForEach(sorted) { item in
+                    ForEach(Array(sorted.enumerated()), id: \.element.id) { index, item in
                         GridItemView(
                             item: item,
                             isSelected: store.selection.contains(item.id),
                             select: { store.select(item.id, extending: $0, in: sorted.map(\.id)) },
                             dragGroup: { dragGroup(for: item, in: sorted) }
                         )
+                        // Past the first screenful they all arrive together.
+                        .arriving(hasArrived, delay: 0.09 + 0.02 * Double(min(index, 15)))
                     }
                 }
                 .padding(.horizontal, 16)
@@ -53,6 +60,7 @@ struct ExpandedCubby: View {
             .safeAreaBar(edge: .top) {
                 VStack(spacing: 12) {
                     topBar
+                        .arriving(hasArrived, delay: 0.05)
                     if !store.missingNames.isEmpty {
                         MissingNotice(names: store.missingNames) {
                             withAnimation(PanelController.animation) { store.missingNames = [] }
@@ -73,7 +81,10 @@ struct ExpandedCubby: View {
         .overlay {
             if isTargeted { shape.stroke(.tint, lineWidth: 2) }
         }
-        .onAppear { store.tidy() }
+        .onAppear {
+            store.tidy()
+            hasAppeared = true
+        }
         // A tab whose last item left goes back to All.
         .onChange(of: kinds) { _, kinds in
             if let kind = store.kindFilter, !kinds.contains(kind) { store.kindFilter = nil }
@@ -145,6 +156,16 @@ struct ExpandedCubby: View {
             CloseButton { panel.collapse() }
         }
         .animation(.easeInOut(duration: 0.15), value: store.isSearching)
+    }
+}
+
+private extension View {
+    /// Fades and rises into place once `arrived` turns true, after `delay`.
+    func arriving(_ arrived: Bool, delay: Double) -> some View {
+        opacity(arrived ? 1 : 0)
+            .scaleEffect(arrived ? 1 : 0.92)
+            .offset(y: arrived ? 0 : 10)
+            .animation(.spring(duration: 0.3, bounce: 0.1).delay(delay), value: arrived)
     }
 }
 
