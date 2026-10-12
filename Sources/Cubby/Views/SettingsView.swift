@@ -6,17 +6,21 @@ struct SettingsView: View {
     @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
     @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
-    @AppStorage(PanelController.raiseOnDragKey) private var raiseOnDrag = true
+    @AppStorage(DragSummon.key) private var dragSummon = DragSummon.always
 
     var body: some View {
         Form {
             Section {
                 Toggle("Catch new screenshots", isOn: $catchScreenshots)
-                Toggle("Come forward while dragging", isOn: $raiseOnDrag)
+                Picker("Come forward while dragging", selection: $dragSummon) {
+                    ForEach(DragSummon.allCases) { Text($0.title) }
+                }
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("New screenshots move into Cubby instead of landing in \(screenshotFolderName).")
-                    Text("When you start dragging something in another app, Cubby comes out from behind your windows so you can drop it in.")
+                    Text(dragSummon == .shake
+                         ? "Give something you're dragging in another app a quick shake, and Cubby comes to the middle of the screen so you can drop it in."
+                         : "When you start dragging something in another app, Cubby comes to the middle of the screen so you can drop it in.")
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)

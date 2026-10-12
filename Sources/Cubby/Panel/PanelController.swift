@@ -80,7 +80,6 @@ final class PanelController {
     @ObservationIgnored private lazy var dimmer = DimWindow()
     @ObservationIgnored private var lowerTask: Task<Void, Never>?
 
-    static let raiseOnDragKey = "raiseOnDrag"
 
     /// Transparent space around the content, for shadows and items rising out of the folder.
     static let inset: CGFloat = 16
@@ -92,7 +91,7 @@ final class PanelController {
 
     init(store: CubbyStore, container: ModelContainer) {
         self.store = store
-        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5, Self.raiseOnDragKey: true])
+        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5, DragSummon.key: DragSummon.always.rawValue])
         isShown = defaults.bool(forKey: "panelShown")
         isPinnedOnTop = defaults.bool(forKey: "pinnedOnTop")
         theme = Theme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
@@ -470,16 +469,23 @@ final class PanelController {
         }
     }
 
+    /// With When Shaken, the drag alone isn't enough: the folder waits for a quick shake
+    /// of the pointer, so ordinary drags between Finder windows leave it be.
     private func watchForDrag() {
-        guard !isRaisedForDrag, isShown, mode == .resting, !isMoving,
-              defaults.bool(forKey: Self.raiseOnDragKey)
-        else { return }
+        let summon = DragSummon(rawValue: defaults.string(forKey: DragSummon.key) ?? "") ?? .always
+        guard summon != .never, !isRaisedForDrag, isShown, mode == .resting, !isMoving else { return }
         let start = NSPasteboard(name: .drag).changeCount
         Task { [weak self] in
+            var shake = ShakeDetector()
+            var isDragging = false
             while NSEvent.pressedMouseButtons & 1 != 0 {
-                try? await Task.sleep(for: .milliseconds(50))
+                // Shakes are quick, so look often once a drag is under way.
+                try? await Task.sleep(for: .milliseconds(isDragging && summon == .shake ? 15 : 50))
                 guard let self else { return }
-                if !self.isRaisedForDrag, NSPasteboard(name: .drag).changeCount != start {
+                guard !self.isRaisedForDrag else { continue }
+                isDragging = isDragging || NSPasteboard(name: .drag).changeCount != start
+                guard isDragging else { continue }
+                if summon == .always || shake.add(x: NSEvent.mouseLocation.x, at: ProcessInfo.processInfo.systemUptime) {
                     self.raiseForDrag()
                 }
             }

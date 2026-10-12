@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Cubby
 
@@ -73,5 +74,40 @@ struct ColorFormatTests {
                 #expect(ColorFormat.hex.string(for: back) == input.uppercased(), "\(format) \(input)")
             }
         }
+    }
+}
+
+struct ShakeDetectorTests {
+    /// Feeds positions 20 ms apart; true if a shake was seen.
+    private func shaken(_ xs: [CGFloat], step: TimeInterval = 0.02) -> Bool {
+        var detector = ShakeDetector()
+        return xs.enumerated().contains { detector.add(x: $1, at: Double($0) * step) }
+    }
+
+    /// Back and forth `swings` times by `width` points, in `samples` steps each way.
+    private func swings(_ count: Int, width: CGFloat, samples: Int = 4) -> [CGFloat] {
+        var xs: [CGFloat] = [0]
+        for swing in 0..<count {
+            let target: CGFloat = swing.isMultiple(of: 2) ? width : 0
+            let from = xs.last!
+            xs += (1...samples).map { from + (target - from) * CGFloat($0) / CGFloat(samples) }
+        }
+        return xs
+    }
+
+    @Test func aQuickShakeCounts() {
+        #expect(shaken(swings(4, width: 80)))
+    }
+
+    @Test func aStraightDragDoesNot() {
+        #expect(!shaken(Array(stride(from: 0, through: 800, by: 15))))
+    }
+
+    @Test func smallWobblesDoNot() {
+        #expect(!shaken(swings(10, width: 12)))
+    }
+
+    @Test func slowBackAndForthDoesNot() {
+        #expect(!shaken(swings(4, width: 80), step: 0.2))
     }
 }
