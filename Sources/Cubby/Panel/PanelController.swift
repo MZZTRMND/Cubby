@@ -32,8 +32,9 @@ final class PanelController {
     /// screen, so the card can grow out of it and shrink back into it.
     private(set) var folderOffset: CGSize = .zero
 
-    /// Goes up each time the folder lands in the middle for a drag, so it can wiggle.
-    private(set) var summonCount = 0
+    /// Shrunk out of sight for a moment while the folder pops between its spot and the
+    /// middle of the screen for a drag.
+    private(set) var isPoppedAway = false
 
     /// The folder's natural size including the inset, reported by SwiftUI.
     var restingSize = CGSize(width: 168, height: 172) {
@@ -513,14 +514,9 @@ final class PanelController {
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         let visible = screen.visibleFrame
-        // A quick slide in, then a wiggle on landing that echoes the shake.
-        slide(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible),
-              duration: 0.3, timing: CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1)) { [weak self] in
-            guard let self, self.isRaisedForDrag,
-                  !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
-            self.summonCount += 1
-        }
         panel.orderFrontRegardless()
+        pop(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible),
+            appear: .spring(duration: 0.32, bounce: 0.35))
     }
 
     /// Back to its own spot once the drag is over, after a moment to see a drop land.
@@ -532,19 +528,19 @@ final class PanelController {
             self.isRaisedForDrag = false
             self.dimmer.fadeOut()
             self.applyPinning()
-            if self.mode != .expanded { self.slide(to: self.restingFrame()) }
+            if self.mode != .expanded { self.pop(to: self.restingFrame(), appear: .easeOut(duration: 0.16)) }
         }
     }
 
-    private func slide(to frame: NSRect, duration: TimeInterval = 0.35,
-                       timing: CAMediaTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut),
-                       completion: (@MainActor () -> Void)? = nil) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = duration
-            context.timingFunction = timing
-            panel.animator().setFrame(frame, display: true)
-        } completionHandler: {
-            MainActor.assumeIsolated { completion?() }
+    /// Shrinks the folder away where it is, moves the window while it can't be seen,
+    /// and grows it back at the new spot, so it pops up there instead of travelling.
+    private func pop(to frame: NSRect, appear: Animation) {
+        withAnimation(.easeIn(duration: 0.1)) {
+            isPoppedAway = true
+        } completion: { [weak self] in
+            guard let self else { return }
+            self.panel.setFrame(frame, display: true)
+            withAnimation(appear) { self.isPoppedAway = false }
         }
     }
 
