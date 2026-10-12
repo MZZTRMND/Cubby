@@ -373,9 +373,18 @@ struct StoreTests {
     @Test func moveToDesktopPutsTheFileBackUnderAFreeName() async throws {
         try "already here".write(to: desktop.appending(path: "report.txt"), atomically: true, encoding: .utf8)
         let item = try await addFile("report.txt", contents: "from the cubby")
-        store.moveToDesktop(item)
+        store.moveToDesktop([item])
         #expect(items.isEmpty)
         #expect(try String(contentsOf: desktop.appending(path: "report 2.txt"), encoding: .utf8) == "from the cubby")
+    }
+
+    @Test func moveToDesktopTakesTheWholeSelection() async throws {
+        let first = try await addFile("one.txt")
+        let second = try await addFile("two.txt")
+        store.moveToDesktop([first, second])
+        #expect(items.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: desktop.appending(path: "one.txt").path))
+        #expect(FileManager.default.fileExists(atPath: desktop.appending(path: "two.txt").path))
     }
 
     @Test func renameDuplicateAndMoveToBin() async throws {

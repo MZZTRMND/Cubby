@@ -557,19 +557,22 @@ final class CubbyStore {
         NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration())
     }
 
-    /// Takes the file off the cubby and puts it back on the Desktop, renamed like Finder
+    /// Takes the files off the cubby and puts them back on the Desktop, renamed like Finder
     /// would ("name 2.ext") if something there has the same name.
-    func moveToDesktop(_ item: CubbyItem) {
-        guard let url = item.fileURL else { return }
-        let destination = Self.unusedURL(for: url.lastPathComponent, in: desktop)
-        do {
-            try FileManager.default.moveItem(at: url, to: destination)
-        } catch {
-            logger.error("move to Desktop failed: \(error.localizedDescription, privacy: .public)")
-            return
+    func moveToDesktop(_ items: [CubbyItem]) {
+        for item in items {
+            guard let url = item.fileURL else { continue }
+            let destination = Self.unusedURL(for: url.lastPathComponent, in: desktop)
+            do {
+                try FileManager.default.moveItem(at: url, to: destination)
+            } catch {
+                logger.error("move to Desktop failed: \(error.localizedDescription, privacy: .public)")
+                continue
+            }
+            try? FileManager.default.removeItem(at: AppPaths.files.appending(path: item.id.uuidString))
+            selection.remove(item.id)
+            context.delete(item)
         }
-        try? FileManager.default.removeItem(at: AppPaths.files.appending(path: item.id.uuidString))
-        context.delete(item)
         try? context.save()
     }
 

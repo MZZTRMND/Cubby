@@ -61,12 +61,6 @@ struct ExpandedCubby: View {
                 .padding(.bottom, 8)
                 .animation(PanelController.animation, value: store.missingNames)
             }
-            .safeAreaBar(edge: .bottom) {
-                actions
-                    .padding(.horizontal, 8)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
-            }
         }
         .frame(width: PanelController.expandedSize.width, height: PanelController.expandedSize.height)
         .clipShape(shape)
@@ -112,16 +106,9 @@ struct ExpandedCubby: View {
         .allowsHitTesting(false)
     }
 
-    /// "Cubby" on the left, the close button on the right, then the tabs with their counts.
+    /// The tabs with their counts on the left, the close button on the right.
     private var topBar: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center) {
-                Text("Cubby")
-                    .font(.system(size: 22, weight: .bold))
-                    .padding(.leading, 8)
-                Spacer(minLength: 0)
-                CloseButton { panel.collapse() }
-            }
+        HStack(alignment: .center, spacing: 8) {
             if !items.isEmpty {
                 KindTabs(
                     kinds: kinds,
@@ -130,26 +117,8 @@ struct ExpandedCubby: View {
                     selection: Bindable(store).kindFilter
                 )
             }
-        }
-    }
-
-    private var actions: some View {
-        HStack(spacing: 0) {
-            ActionButton(title: "Clear", symbol: "trash") { panel.confirmClear() }
-                .disabled(items.isEmpty)
-            Menu {
-                Picker("Sort By", selection: Bindable(store).sortOrder) {
-                    ForEach(CubbyStore.SortOrder.allCases) { Text($0.title) }
-                }
-                .pickerStyle(.inline)
-            } label: {
-                ActionLabel(title: "Sort", symbol: "arrow.up.arrow.down")
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .frame(maxWidth: .infinity)
-            ActionButton(title: "Upload", symbol: "arrow.up.doc") { panel.chooseFilesToAdd() }
+            Spacer(minLength: 0)
+            CloseButton { panel.collapse() }
         }
     }
 }
@@ -272,39 +241,6 @@ private struct KindTabs: View {
     }
 }
 
-/// An icon over a one-word label, like the actions along the bottom of a widget.
-private struct ActionLabel: View {
-    let title: String
-    let symbol: String
-
-    var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.title2)
-                .frame(height: 28)
-            Text(title)
-                .font(.callout)
-        }
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-    }
-}
-
-private struct ActionButton: View {
-    let title: String
-    let symbol: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            ActionLabel(title: title, symbol: symbol)
-        }
-        .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
-    }
-}
-
 /// An item in the grid: its preview with its name underneath. Click to open or copy,
 /// right-click for more, drag to move it out.
 private struct GridItemView: View {
@@ -375,6 +311,13 @@ private struct GridItemView: View {
         return ActionMenuItem(title) { store.moveToBin(group, actionName: hasFiles ? "Move to Bin" : "Remove") }
     }
 
+    /// Move to Desktop for every file in the selection when several are selected.
+    private var moveGroupToDesktopItem: NSMenuItem? {
+        let files = group.filter { $0.fileURL != nil }
+        guard files.count > 1 else { return nil }
+        return ActionMenuItem("Move \(files.count) Items to Desktop") { store.moveToDesktop(files) }
+    }
+
     /// Files get the same menu as on the Desktop, plus Move to Desktop. Links, colors
     /// and text get a short one.
     private var menu: NSMenu {
@@ -389,7 +332,7 @@ private struct GridItemView: View {
         menu.addItem(ActionMenuItem("Open") { store.open(item) })
         menu.addItem(openWithMenu(for: url))
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("Move to Desktop") { store.moveToDesktop(item) })
+        menu.addItem(moveGroupToDesktopItem ?? ActionMenuItem("Move to Desktop") { store.moveToDesktop([item]) })
         menu.addItem(removeGroupItem ?? ActionMenuItem("Move to Bin") { store.moveToBin(item) })
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Get Info") { store.showInfo(item) })
