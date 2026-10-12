@@ -3,9 +3,9 @@
 A little folder that lives on your Mac's desktop. Drop in files, images, screenshots, links, colors or text, and grab them again when you need them.
 
 <p align="center">
-  <img src="docs/folder.png" width="260" alt="Cubby resting on the desktop as a frosted glass folder">
+  <img src="docs/folder-v2.png" width="260" alt="Cubby resting on the desktop as a frosted glass folder">
   &nbsp;&nbsp;
-  <img src="docs/open.png" width="380" alt="Cubby opened, showing a grid of images and files with tabs">
+  <img src="docs/open-v2.png" width="380" alt="Cubby opened, showing a grid of images and files with tabs">
 </p>
 
 <p align="center">
