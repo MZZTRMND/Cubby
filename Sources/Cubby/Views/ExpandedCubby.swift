@@ -268,7 +268,9 @@ private struct GridItemView: View {
         .padding(.vertical, 6)
         .background {
             if isSelected {
-                Color.clear.glassSurface(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                // Glass with a light wash of blue.
+                Color.clear.glassSurface(RoundedRectangle(cornerRadius: 16, style: .continuous),
+                                         glass: .regular.tint(.blue.opacity(0.1)))
             }
         }
         .overlay {
