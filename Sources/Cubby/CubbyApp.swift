@@ -16,6 +16,16 @@ struct CubbyApp: App {
         }
         Settings {
             SettingsView()
+                .environment(app.panel)
+        }
+        Window("About Cubby", id: AboutView.windowID) {
+            AboutView()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .restorationBehavior(.disabled)
+        .commands {
+            CommandGroup(replacing: .appInfo) { AboutButton() }
         }
     }
 }
@@ -83,20 +93,16 @@ private struct MenuContent: View {
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        @Bindable var panel = panel
         Button(panel.isShown ? "Hide Cubby" : "Show Cubby") { panel.isShown.toggle() }
-        Picker("Appearance", selection: $panel.theme) {
-            ForEach(PanelController.Theme.allCases) { Text($0.title) }
-        }
-        // The Dock menu has this too, but the Dock icon may be hidden.
-        Toggle("Pin on Top", isOn: $panel.isPinnedOnTop)
         Divider()
+        AboutButton()
         Button("Settings…") {
             // The menu bar menu doesn't activate the app, so bring it forward or the window opens behind.
             NSApp.activate()
             openSettings()
         }
         .keyboardShortcut(",")
+        Divider()
         Button("Quit Cubby") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }

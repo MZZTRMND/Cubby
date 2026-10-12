@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Cubby's settings: what it catches, when it comes forward, whether it's in the Dock,
-/// and how big the folder and its items are.
+/// Cubby's settings: what it catches, when it comes forward, how it looks, whether it's in
+/// the Dock, and how big the folder and its items are.
 struct SettingsView: View {
+    @Environment(PanelController.self) private var panel
     @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
     @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
@@ -10,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(DockIcon.key) private var showInDock = false
 
     var body: some View {
+        @Bindable var panel = panel
         Form {
             Section {
                 Toggle("Catch new screenshots", isOn: $catchScreenshots)
@@ -28,6 +30,9 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             Section {
+                Picker("Appearance", selection: $panel.theme) {
+                    ForEach(PanelController.Theme.allCases) { Text($0.title) }
+                }
                 Toggle("Show in Dock", isOn: $showInDock)
                     .onChange(of: showInDock) { DockIcon.apply() }
             } footer: {
