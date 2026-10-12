@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         super.init()
     }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        DockIcon.apply()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel.showAtLaunch()
         screenshots.onCatch = { [store, panel] url in
@@ -59,6 +63,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Whether Cubby shows in the Dock and ⌘-Tab. Off by default: the folder and the menu bar
+/// icon are the way in.
+enum DockIcon {
+    static let key = "showInDock"
+
+    static var isShown: Bool { UserDefaults.standard.bool(forKey: key) }
+
+    static func apply() {
+        NSApp.setActivationPolicy(isShown ? .regular : .accessory)
+        // Leaving the Dock deactivates the app, which would drop Settings behind other windows.
+        NSApp.activate()
+    }
+}
+
 private struct MenuContent: View {
     @Environment(CubbyStore.self) private var store
     @Environment(PanelController.self) private var panel
@@ -70,6 +88,8 @@ private struct MenuContent: View {
         Picker("Appearance", selection: $panel.theme) {
             ForEach(PanelController.Theme.allCases) { Text($0.title) }
         }
+        // The Dock menu has this too, but the Dock icon may be hidden.
+        Toggle("Pin on Top", isOn: $panel.isPinnedOnTop)
         Divider()
         Button("Settings…") {
             // The menu bar menu doesn't activate the app, so bring it forward or the window opens behind.

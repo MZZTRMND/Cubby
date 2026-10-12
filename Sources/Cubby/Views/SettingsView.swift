@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// Cubby's settings: what it catches, when it comes forward, and how big the folder and
-/// its items are.
+/// Cubby's settings: what it catches, when it comes forward, whether it's in the Dock,
+/// and how big the folder and its items are.
 struct SettingsView: View {
     @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
     @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
     @AppStorage(DragSummon.key) private var dragSummon = DragSummon.shake
+    @AppStorage(DockIcon.key) private var showInDock = false
 
     var body: some View {
         Form {
@@ -25,6 +26,14 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            }
+            Section {
+                Toggle("Show in Dock", isOn: $showInDock)
+                    .onChange(of: showInDock) { DockIcon.apply() }
+            } footer: {
+                Text("Cubby is always in the menu bar.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             Section {
                 SizeSlider(title: "Folder", symbol: "folder", range: FolderIcon.folderScaleRange, value: $folderScale)
