@@ -32,6 +32,12 @@ final class CubbyStore {
     var kindFilter: ItemKind? {
         didSet { if kindFilter != oldValue { clearSelection() } }
     }
+    /// What's been typed in the open cubby to find items by name. While it's set, the
+    /// grid shows matches from every tab.
+    var searchText = "" {
+        didSet { if searchText != oldValue { clearSelection() } }
+    }
+    var isSearching: Bool { !searchText.isEmpty }
     /// Items picked with ⌘- or ⇧-click in the open cubby.
     var selection: Set<UUID> = []
     /// Where a ⇧-click range starts.
@@ -87,6 +93,7 @@ final class CubbyStore {
     func add(_ incoming: [Incoming], moveFiles: Bool = false) -> Task<Void, Never> {
         // Whatever comes in should be seen arriving, whatever tab you're on.
         kindFilter = nil
+        searchText = ""
         return Task {
             for item in incoming {
                 switch item {
@@ -96,6 +103,16 @@ final class CubbyStore {
                 case .image(let data, let type, let name): await addImage(data, type: type, name: name)
                 }
             }
+            try? context.save()
+        }
+    }
+
+    /// A screenshot caught from the screenshot folder: always moved in, like a drop from
+    /// the Desktop, without switching the open cubby's tab.
+    @discardableResult
+    func addScreenshot(_ url: URL) -> Task<Void, Never> {
+        Task {
+            await addFile(url, move: true)
             try? context.save()
         }
     }
@@ -220,10 +237,18 @@ final class CubbyStore {
 
     // MARK: - Order
 
-    /// The items in the open cubby's grid order.
-    /// The items under the chosen tab, in grid order.
+    /// The items under the chosen tab, or matching the search, in grid order.
     func shown(_ items: [CubbyItem]) -> [CubbyItem] {
-        sorted(kindFilter.map { kind in items.filter { $0.kind == kind } } ?? items)
+        if isSearching { return sorted(items.filter { Self.matches($0, searchText) }) }
+        return sorted(kindFilter.map { kind in items.filter { $0.kind == kind } } ?? items)
+    }
+
+    /// Whether any of the item's names contain `query`, ignoring case and accents.
+    static func matches(_ item: CubbyItem, _ query: String) -> Bool {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return true }
+        let names = [item.fileName, item.title, item.text, item.kind == .link ? item.domain : nil]
+        return names.contains { $0?.localizedStandardContains(query) == true }
     }
 
     func sorted(_ items: [CubbyItem]) -> [CubbyItem] {

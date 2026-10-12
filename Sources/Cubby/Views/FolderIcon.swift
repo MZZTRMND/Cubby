@@ -9,6 +9,9 @@ struct FolderIcon: View {
     let isDropTarget: Bool
     /// Pin on Top is on: a pushpin sticks in the back's corner.
     var isPinned = false
+    /// Where the glass front starts, top to bottom, in the `space` coordinate space.
+    /// Grabbing above it takes the papers; grabbing the front moves the folder.
+    var onFrontTop: (CGFloat) -> Void = { _ in }
     @State private var isHovered = false
     /// Bumped once the pin has landed after Pin on Top is turned on, to wiggle it.
     @State private var pinWiggles = 0
@@ -17,6 +20,8 @@ struct FolderIcon: View {
     @AppStorage(Self.folderScaleKey) private var folderScale = Self.defaultFolderScale
     @AppStorage(Self.itemScaleKey) private var itemScale = 1.0
 
+    /// The coordinate space the folder's drag gesture and `onFrontTop` share.
+    static let space = "folderIcon"
     static let folderScaleKey = "folderScale"
     static let itemScaleKey = "itemScale"
     static let folderScaleRange: ClosedRange<Double> = 0.75...1.5
@@ -80,6 +85,7 @@ struct FolderIcon: View {
                 .frame(width: Self.width * scale, height: Self.frontHeight * scale)
                 // Clear glass, so the items and page show through more.
                 .glassSurface(front, glass: .clear)
+                .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(Self.space)).minY }) { onFrontTop($0) }
         }
         // Room above the back for the items to slide into.
         .frame(width: Self.width * scale, height: (Self.backSize.height + 4 + Self.rise) * scale, alignment: .bottom)

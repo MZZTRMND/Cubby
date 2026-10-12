@@ -8,6 +8,7 @@ struct PanelView: View {
     @Environment(PanelController.self) private var panel
     @Query(sort: \CubbyItem.addedAt, order: .reverse) private var allItems: [CubbyItem]
     @State private var isTargeted = false
+    @State private var frontTop: CGFloat = .infinity
 
     var body: some View {
         GeometryReader { geometry in
@@ -18,14 +19,24 @@ struct PanelView: View {
                         .transition(.scale(scale: 0.25, anchor: folderAnchor(in: geometry.size))
                             .combined(with: .opacity))
                 } else {
-                    FolderIcon(items: allItems, isDropTarget: panel.mode == .dropTarget, isPinned: panel.isPinnedOnTop)
+                    FolderIcon(items: allItems, isDropTarget: panel.mode == .dropTarget, isPinned: panel.isPinnedOnTop,
+                               onFrontTop: { frontTop = $0 })
                         .onTapGesture { panel.expand() }
                         .contextMenu { FolderMenu() }
+                        // Grabbing the papers above the front carries them all out;
+                        // grabbing the front moves the folder.
                         .gesture(
-                            DragGesture(minimumDistance: 4)
-                                .onChanged { _ in panel.beginMove() }
+                            DragGesture(minimumDistance: 4, coordinateSpace: .named(FolderIcon.space))
+                                .onChanged { value in
+                                    if value.startLocation.y < frontTop, !allItems.isEmpty {
+                                        panel.beginDragOut(allItems)
+                                    } else {
+                                        panel.beginMove()
+                                    }
+                                }
                                 .onEnded { _ in panel.endMove() }
                         )
+                        .coordinateSpace(.named(FolderIcon.space))
                         .padding(PanelController.inset)
                         .onGeometryChange(for: CGSize.self, of: \.size) { panel.restingSize = $0 }
                         .offset(panel.folderOffset)

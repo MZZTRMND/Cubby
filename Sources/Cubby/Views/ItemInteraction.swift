@@ -86,6 +86,29 @@ struct ItemInteraction: NSViewRepresentable {
     }
 }
 
+/// The source for a drag that isn't started from an item in the card, such as taking
+/// everything out of the folder. Same rules: outside the app, files can only be moved.
+final class ItemDragSource: NSObject, NSDraggingSource {
+    private let movesOut: Bool
+    private let onEnd: (_ delivered: Bool) -> Void
+
+    init(movesOut: Bool, onEnd: @escaping (_ delivered: Bool) -> Void) {
+        self.movesOut = movesOut
+        self.onEnd = onEnd
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        if context == .withinApplication { return [.copy, .move, .generic] }
+        return movesOut ? .move : .copy
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                         operation: NSDragOperation) {
+        onEnd(!operation.isEmpty)
+    }
+}
+
 /// A menu item that runs a closure.
 final class ActionMenuItem: NSMenuItem {
     private let handler: () -> Void

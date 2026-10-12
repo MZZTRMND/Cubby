@@ -41,7 +41,11 @@ struct ExpandedCubby: View {
             .contentShape(Rectangle())
             .onTapGesture { store.clearSelection() }
             .overlay {
-                if items.isEmpty { emptyState }
+                if items.isEmpty {
+                    emptyState
+                } else if sorted.isEmpty, store.isSearching {
+                    noMatches
+                }
             }
             // The system's progressive blur where items scroll under the header and footer.
             .scrollEdgeEffectStyle(.soft, for: .vertical)
@@ -106,10 +110,29 @@ struct ExpandedCubby: View {
         .allowsHitTesting(false)
     }
 
-    /// The tabs with their counts on the left, the close button on the right.
+    private var noMatches: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 32, weight: .light))
+                .padding(.bottom, 4)
+            Text("Nothing called \u{201C}\(store.searchText)\u{201D}")
+                .font(.headline)
+                .lineLimit(2)
+        }
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 32)
+        .allowsHitTesting(false)
+    }
+
+    /// The tabs with their counts on the left, or what's been typed while finding; the
+    /// close button on the right.
     private var topBar: some View {
         HStack(alignment: .center, spacing: 8) {
-            if !items.isEmpty {
+            if store.isSearching {
+                SearchPill(text: store.searchText) { store.searchText = "" }
+                    .transition(.blurReplace)
+            } else if !items.isEmpty {
                 KindTabs(
                     kinds: kinds,
                     total: items.count,
@@ -120,6 +143,7 @@ struct ExpandedCubby: View {
             Spacer(minLength: 0)
             CloseButton { panel.collapse() }
         }
+        .animation(.easeInOut(duration: 0.15), value: store.isSearching)
     }
 }
 
@@ -185,6 +209,56 @@ private struct CloseButton: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isHovered)
         .onHover { isHovered = $0 }
         .pointingHandCursor()
+    }
+}
+
+/// What's been typed to find items, with a blinking caret, in a glass pill like the tabs
+/// it stands in for. The button clears it, as Esc does.
+private struct SearchPill: View {
+    let text: String
+    let clear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            HStack(spacing: 1) {
+                Text(text)
+                    .lineLimit(1)
+                    .truncationMode(.head)
+                Caret()
+            }
+            Button(action: clear) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Clear")
+            .accessibilityLabel("Clear")
+            .pointingHandCursor()
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 12)
+        .frame(height: 30)
+        .glassSurface(Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct Caret: View {
+    @State private var isOn = true
+
+    var body: some View {
+        Rectangle()
+            .fill(.tint)
+            .frame(width: 1.5, height: 15)
+            .opacity(isOn ? 1 : 0)
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(530))
+                    isOn.toggle()
+                }
+            }
     }
 }
 

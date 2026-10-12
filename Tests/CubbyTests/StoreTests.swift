@@ -75,6 +75,37 @@ struct StoreTests {
         #expect(!FileManager.default.fileExists(atPath: copy.path))
     }
 
+    @Test func typingFindsItemsByNameAcrossTabs() async {
+        await paste { $0.setString("Grocery list", forType: .string) }
+        await paste { $0.setString("#ff0000", forType: .string) }
+        await paste { $0.setString("Résumé draft", forType: .string) }
+        store.kindFilter = .color
+        store.searchText = "resume"
+        #expect(store.shownItems().map(\.text) == ["Résumé draft"])
+        store.searchText = "GROC"
+        #expect(store.shownItems().map(\.text) == ["Grocery list"])
+        store.searchText = ""
+        #expect(store.shownItems().map(\.text) == ["#ff0000"])
+    }
+
+    @Test func caughtScreenshotsMoveInFromAnyFolder() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "cubby-shots-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let shot = folder.appending(path: "Screenshot.png")
+        let png = try #require(NSImage(systemSymbolName: "star", accessibilityDescription: nil)?.tiffRepresentation)
+        try #require(ImageData.png(from: png)).write(to: shot)
+        #expect(!ScreenshotCatcher.isScreenshot(shot))
+        #expect(setxattr(shot.path, "com.apple.metadata:kMDItemIsScreenCapture", "1", 1, 0, 0) == 0)
+        #expect(ScreenshotCatcher.isScreenshot(shot))
+
+        await store.addScreenshot(shot).value
+        #expect(!FileManager.default.fileExists(atPath: shot.path))
+        let item = try #require(items.first)
+        #expect(item.kind == .image && item.isOriginal)
+        store.remove(item)
+    }
+
     @Test func clearMovesEveryFileToTheBin() async throws {
         let source = desktop.appending(path: "copy.txt")
         try "x".write(to: source, atomically: true, encoding: .utf8)

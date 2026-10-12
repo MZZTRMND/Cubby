@@ -73,6 +73,12 @@ final class PanelController {
     @ObservationIgnored private var keyMonitor: Any?
     /// While a dialog is up, losing focus mustn't close the card.
     @ObservationIgnored private var isPresentingDialog = false
+    /// Lifted above other windows while something is dragged in another app.
+    @ObservationIgnored private var isRaisedForDrag = false
+    /// The drag carrying everything out of the folder, while it lasts.
+    @ObservationIgnored private var dragOutSource: ItemDragSource?
+
+    static let raiseOnDragKey = "raiseOnDrag"
 
     /// Transparent space around the content, for shadows and items rising out of the folder.
     static let inset: CGFloat = 16
@@ -84,7 +90,7 @@ final class PanelController {
 
     init(store: CubbyStore, container: ModelContainer) {
         self.store = store
-        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5])
+        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5, Self.raiseOnDragKey: true])
         isShown = defaults.bool(forKey: "panelShown")
         isPinnedOnTop = defaults.bool(forKey: "pinnedOnTop")
         theme = Theme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
@@ -99,9 +105,14 @@ final class PanelController {
         )
         hosting.sizingOptions = []
         panel.contentView = hosting
-        panel.onCancel = { [weak self] in self?.collapse() }
+        panel.onCancel = { [weak self] in
+            // Esc clears what's been typed first, then closes the card.
+            guard let self else { return }
+            if self.store.isSearching { self.store.searchText = "" } else { self.collapse() }
+        }
         store.undoManager = panel.undoManager
         installKeyMonitor()
+        installDragWatcher()
 
         let center = NotificationCenter.default
         center.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
@@ -155,6 +166,7 @@ final class PanelController {
         guard mode != .resting else { return }
         let wasExpanded = mode == .expanded
         store.clearSelection()
+        store.searchText = ""
         store.hoveredItemID = nil
         // You've seen the notice about missing files once the card has been open.
         if wasExpanded { store.missingNames = [] }
@@ -188,12 +200,16 @@ final class PanelController {
                 if quickLook.isShown { self.refreshQuickLook() }
                 return nil
             }
+            if self.typeToFind(event, flags: flags) { return nil }
             switch (event.keyCode, flags) {
             case (49, []): // Space
                 if quickLook.isShown { quickLook.close() } else { self.refreshQuickLook() }
             case (36, []), (76, []), (125, .command): // Return, Enter, ⌘↓
                 guard event.window === self.panel else { return event }
-                for item in self.store.selectedItems() { self.store.open(item) }
+                // While finding, with nothing picked, the first match opens.
+                let picked = self.store.selectedItems()
+                let items = picked.isEmpty && self.store.isSearching ? Array(self.store.shownItems().prefix(1)) : picked
+                for item in items { self.store.open(item) }
             case (0, .command): // ⌘A
                 guard event.window === self.panel else { return event }
                 self.store.selectAll()
@@ -208,6 +224,24 @@ final class PanelController {
             }
             return nil
         }
+    }
+
+    /// Typing in the open card finds items by name, and Delete takes a letter back. Space
+    /// stays Quick Look, except in the middle of a name with nothing selected.
+    private func typeToFind(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        guard event.window === panel, flags.subtracting(.shift).isEmpty else { return false }
+        if event.keyCode == 51 { // Delete
+            guard store.isSearching else { return false }
+            store.searchText.removeLast()
+            return true
+        }
+        guard let typed = event.characters, !typed.isEmpty,
+              typed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) && $0.value < 0xF700 })
+        else { return false }
+        if typed == " ", !store.isSearching || !store.selection.isEmpty { return false }
+        QuickLook.shared.close()
+        store.searchText += typed
+        return true
     }
 
     private static func direction(of event: NSEvent) -> CubbyStore.Direction? {
@@ -227,6 +261,8 @@ final class PanelController {
     }
 
     func dragEntered() {
+        // Its own items coming back over it.
+        guard store.draggedItemIDs.isEmpty else { return }
         collapseTask?.cancel()
         if mode == .resting { withAnimation(Self.animation) { mode = .dropTarget } }
     }
@@ -237,6 +273,13 @@ final class PanelController {
 
     func dropped() {
         if mode == .dropTarget { collapse(after: .milliseconds(500)) }
+    }
+
+    /// A screenshot was caught: the folder opens for a moment, as if it had been dropped in.
+    func caught() {
+        guard mode == .resting else { return }
+        withAnimation(Self.animation) { mode = .dropTarget }
+        collapse(after: .milliseconds(900))
     }
 
     private func collapse(after delay: Duration) {
@@ -264,7 +307,9 @@ final class PanelController {
         let count = store.clearableCount()
         guard count > 0 else { return }
         let alert = NSAlert()
-        alert.messageText = store.kindFilter.map { "Clear \($0.pluralTitle)?" } ?? "Clear the cubby?"
+        alert.messageText = store.isSearching
+            ? "Clear the items matching \u{201C}\(store.searchText)\u{201D}?"
+            : store.kindFilter.map { "Clear \($0.pluralTitle)?" } ?? "Clear the cubby?"
         alert.informativeText = count == 1
             ? "1 item will be moved to the Bin. You can undo this with \u{2318}Z."
             : "\(count) items will be moved to the Bin. You can undo this with \u{2318}Z."
@@ -352,6 +397,81 @@ final class PanelController {
             defaults.set(displayID, forKey: "folderDisplay")
         }
         placeFolder()
+    }
+
+    // MARK: - Dragging everything out
+
+    /// Grabbing the papers in the folder carries every item out at once, as if they'd all
+    /// been selected in the card: files move out, links and text are copied.
+    func beginDragOut(_ items: [CubbyItem]) {
+        guard mode != .expanded, !isMoving, dragOutSource == nil, !items.isEmpty,
+              let press = panel.lastMouseDown, let view = panel.contentView
+        else { return }
+        let ordered = store.sorted(items)
+        store.draggedItemIDs = Set(ordered.map(\.id))
+        let source = ItemDragSource(movesOut: ordered.contains { store.movesOut($0) }) { [weak self] delivered in
+            guard let self else { return }
+            self.store.dragEnded(ordered.map(\.id), delivered: delivered)
+            self.dragOutSource = nil
+        }
+        dragOutSource = source
+        let point = view.convert(press.locationInWindow, from: nil)
+        let pieces = ordered.enumerated().map { index, item in
+            let piece = NSDraggingItem(pasteboardWriter: store.pasteboardWriter(for: item))
+            let image = ImageRenderer(content: ItemGlyph(item: item, size: 64, natural: true)).nsImage
+                ?? NSImage(size: NSSize(width: 64, height: 64))
+            // The first few fan out under the pointer; the rest stack behind them.
+            let step = CGFloat(min(index, 4)) * 6
+            piece.setDraggingFrame(NSRect(x: point.x - image.size.width / 2 + step,
+                                          y: point.y - image.size.height / 2 - step,
+                                          width: image.size.width, height: image.size.height),
+                                   contents: image)
+            return piece
+        }
+        let session = view.beginDraggingSession(with: pieces, event: press, source: source)
+        session.draggingFormation = .stack
+    }
+
+    // MARK: - Coming forward for drags
+
+    /// Watches for drags starting in other apps. A press that puts something on the drag
+    /// pasteboard is a drag of files, links or text, not a window being moved, so the
+    /// folder comes out from behind other windows to take it, and goes back afterwards.
+    /// Watching mouse presses in other apps needs no special permission.
+    private func installDragWatcher() {
+        NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
+            MainActor.assumeIsolated { self?.watchForDrag() }
+        }
+    }
+
+    private func watchForDrag() {
+        guard !isRaisedForDrag, isShown, !isPinnedOnTop, mode == .resting,
+              defaults.bool(forKey: Self.raiseOnDragKey)
+        else { return }
+        let start = NSPasteboard(name: .drag).changeCount
+        Task { [weak self] in
+            while NSEvent.pressedMouseButtons & 1 != 0 {
+                try? await Task.sleep(for: .milliseconds(50))
+                guard let self else { return }
+                if !self.isRaisedForDrag, NSPasteboard(name: .drag).changeCount != start {
+                    self.raiseForDrag()
+                }
+            }
+            self?.lowerAfterDrag()
+        }
+    }
+
+    private func raiseForDrag() {
+        isRaisedForDrag = true
+        panel.level = .floating
+        panel.orderFrontRegardless()
+    }
+
+    private func lowerAfterDrag() {
+        guard isRaisedForDrag else { return }
+        isRaisedForDrag = false
+        // It stays in front of the other windows until one of them is clicked.
+        applyPinning()
     }
 
     // MARK: - Layout

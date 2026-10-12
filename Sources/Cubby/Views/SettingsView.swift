@@ -1,12 +1,27 @@
 import SwiftUI
 
-/// Cubby's settings: how big the folder and its items are.
+/// Cubby's settings: what it catches, when it comes forward, and how big the folder and
+/// its items are.
 struct SettingsView: View {
     @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
+    @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
+    @AppStorage(PanelController.raiseOnDragKey) private var raiseOnDrag = true
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Catch new screenshots", isOn: $catchScreenshots)
+                Toggle("Come forward while dragging", isOn: $raiseOnDrag)
+            } footer: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("New screenshots move into Cubby instead of landing in \(screenshotFolderName).")
+                    Text("When you start dragging something in another app, Cubby comes out from behind your windows so you can drop it in.")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
             Section {
                 SizeSlider(title: "Folder", symbol: "folder", range: FolderIcon.folderScaleRange, value: $folderScale)
                 SizeSlider(title: "Items", symbol: "doc", range: FolderIcon.itemScaleRange, value: $itemScale)
@@ -26,6 +41,15 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private extension SettingsView {
+    /// "the Desktop", or the folder picked in the Screenshot app.
+    var screenshotFolderName: String {
+        let folder = ScreenshotCatcher.screenshotFolder()
+        if folder.standardizedFileURL == URL.desktopDirectory.standardizedFileURL { return "the Desktop" }
+        return FileManager.default.displayName(atPath: folder.path)
     }
 }
 

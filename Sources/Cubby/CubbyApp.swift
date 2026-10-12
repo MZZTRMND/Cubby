@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let container: ModelContainer
     let store: CubbyStore
     let panel: PanelController
+    let screenshots = ScreenshotCatcher()
 
     override init() {
         let config = ModelConfiguration(url: AppPaths.store)
@@ -36,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel.showAtLaunch()
+        screenshots.onCatch = { [store, panel] url in
+            store.addScreenshot(url)
+            panel.caught()
+        }
     }
 
     /// Clicking the Dock icon brings Cubby back if it was hidden.
