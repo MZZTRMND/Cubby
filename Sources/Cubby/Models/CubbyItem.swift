@@ -2,16 +2,20 @@ import Foundation
 import SwiftData
 
 enum ItemKind: String, Codable {
-    case color, link, image, file, text
+    case color, link, image, screenshot, file, text
 }
 
 extension ItemKind {
     /// The order of the tabs in the open cubby.
-    static let tabOrder: [ItemKind] = [.image, .file, .link, .color, .text]
+    static let tabOrder: [ItemKind] = [.image, .screenshot, .file, .link, .color, .text]
+
+    /// Screenshots are images in every way but their tab.
+    var isImage: Bool { self == .image || self == .screenshot }
 
     var pluralTitle: String {
         switch self {
         case .image: "Images"
+        case .screenshot: "Screenshots"
         case .file: "Files"
         case .link: "Links"
         case .color: "Colors"
@@ -60,7 +64,7 @@ final class CubbyItem {
         if let name { return name }
         switch kind {
         case .link: return title ?? domain
-        case .image, .file: return fileName ?? text
+        case .image, .screenshot, .file: return fileName ?? text
         case .color, .text: return text
         }
     }

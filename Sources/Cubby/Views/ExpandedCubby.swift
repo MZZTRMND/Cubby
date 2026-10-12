@@ -277,6 +277,10 @@ private struct KindTabs: View {
         ViewThatFits(in: .horizontal) {
             row.controlSize(.regular)
             row.controlSize(.small)
+            // Every kind there at once: small pills that scroll sideways.
+            ScrollView(.horizontal) { row.controlSize(.small).padding(.vertical, 4) }
+                .scrollIndicators(.never)
+                .padding(.vertical, -4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -480,7 +484,7 @@ private struct GridItemView: View {
     /// Convert and shrink the images in the selection, each into a new item, like
     /// Finder's Quick Actions.
     private var quickActionsMenu: NSMenuItem? {
-        let images = group.filter { $0.kind == .image && $0.fileURL != nil }
+        let images = group.filter { $0.kind.isImage && $0.fileURL != nil }
         guard !images.isEmpty else { return nil }
         let several = images.count > 1
         let submenu = NSMenu()
@@ -551,7 +555,7 @@ private struct GridItemView: View {
     /// Files, images and links open; colors and text are copied.
     private func activate() {
         switch item.kind {
-        case .file, .image, .link: store.open(item)
+        case .file, .image, .screenshot, .link: store.open(item)
         case .color, .text: copy()
         }
     }

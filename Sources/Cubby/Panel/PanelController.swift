@@ -91,7 +91,7 @@ final class PanelController {
 
     init(store: CubbyStore, container: ModelContainer) {
         self.store = store
-        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5, DragSummon.key: DragSummon.always.rawValue])
+        defaults.register(defaults: ["panelShown": true, "folderX": 0.92, "folderY": 0.5, DragSummon.key: DragSummon.shake.rawValue])
         isShown = defaults.bool(forKey: "panelShown")
         isPinnedOnTop = defaults.bool(forKey: "pinnedOnTop")
         theme = Theme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
@@ -472,7 +472,7 @@ final class PanelController {
     /// With When Shaken, the drag alone isn't enough: the folder waits for a quick shake
     /// of the pointer, so ordinary drags between Finder windows leave it be.
     private func watchForDrag() {
-        let summon = DragSummon(rawValue: defaults.string(forKey: DragSummon.key) ?? "") ?? .always
+        let summon = DragSummon(rawValue: defaults.string(forKey: DragSummon.key) ?? "") ?? .shake
         guard summon != .never, !isRaisedForDrag, isShown, mode == .resting, !isMoving else { return }
         let start = NSPasteboard(name: .drag).changeCount
         Task { [weak self] in

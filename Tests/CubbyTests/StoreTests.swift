@@ -102,8 +102,24 @@ struct StoreTests {
         await store.addScreenshot(shot).value
         #expect(!FileManager.default.fileExists(atPath: shot.path))
         let item = try #require(items.first)
-        #expect(item.kind == .image && item.isOriginal)
+        #expect(item.kind == .screenshot && item.isOriginal && item.thumbnail != nil)
         store.remove(item)
+    }
+
+    @Test func droppedScreenshotsGetTheirOwnTab() async throws {
+        let photo = try await addImage("photo.png")
+        let source = FileManager.default.temporaryDirectory.appending(path: "cubby-src-\(UUID().uuidString)").appending(path: "Screenshot.png")
+        try FileManager.default.createDirectory(at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: try #require(photo.fileURL), to: source)
+        #expect(setxattr(source.path, "com.apple.metadata:kMDItemIsScreenCapture", "1", 1, 0, 0) == 0)
+        await store.add([.file(source)]).value
+
+        store.kindFilter = .screenshot
+        #expect(store.shownItems().map(\.fileName) == ["Screenshot.png"])
+        store.kindFilter = .image
+        #expect(store.shownItems().map(\.fileName) == ["photo.png"])
+        store.kindFilter = nil
+        for item in items { store.remove(item) }
     }
 
     @Test func clearMovesEveryFileToTheBin() async throws {

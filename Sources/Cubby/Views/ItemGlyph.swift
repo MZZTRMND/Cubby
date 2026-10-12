@@ -11,7 +11,7 @@ struct ItemGlyph: View {
     var body: some View {
         if natural && item.kind == .file {
             fileIcon.frame(width: size, height: size)
-        } else if natural && item.kind == .image, let data = item.thumbnail, let image = NSImage(data: data) {
+        } else if natural && item.kind.isImage, let data = item.thumbnail, let image = NSImage(data: data) {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
@@ -36,7 +36,7 @@ struct ItemGlyph: View {
             .frame(width: size, height: size)
             .clipShape(shape)
             .overlay {
-                if item.kind == .color || item.kind == .text || item.kind == .image && item.thumbnail != nil {
+                if item.kind == .color || item.kind == .text || item.kind.isImage && item.thumbnail != nil {
                     shape.strokeBorder(.separator)
                 }
             }
@@ -46,7 +46,7 @@ struct ItemGlyph: View {
         switch item.kind {
         case .color:
             Rectangle().fill(ColorParser.color(item.text) ?? .clear)
-        case .image:
+        case .image, .screenshot:
             if let data = item.thumbnail, let image = NSImage(data: data) {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {

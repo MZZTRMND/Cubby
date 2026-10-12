@@ -6,7 +6,7 @@ struct SettingsView: View {
     @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
     @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
     @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
-    @AppStorage(DragSummon.key) private var dragSummon = DragSummon.always
+    @AppStorage(DragSummon.key) private var dragSummon = DragSummon.shake
 
     var body: some View {
         Form {

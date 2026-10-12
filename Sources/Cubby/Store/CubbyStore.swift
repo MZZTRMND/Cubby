@@ -75,6 +75,7 @@ final class CubbyStore {
         sortOrder = SortOrder(rawValue: UserDefaults.standard.string(forKey: "sortOrder") ?? "") ?? .dateAdded
         tidy()
         removeOrphanedFiles()
+        sortOutScreenshots()
         installPasteMonitor()
     }
 
@@ -187,7 +188,8 @@ final class CubbyStore {
         logger.notice("file \(name, privacy: .public): move=\(move) moved=\(result?.moved ?? false)")
         guard let (thumbnail, moved) = result else { return }
 
-        let item = CubbyItem(id: id, kind: isImage ? .image : .file, text: name)
+        let kind: ItemKind = !isImage ? .file : ScreenshotCatcher.isScreenshot(destination) ? .screenshot : .image
+        let item = CubbyItem(id: id, kind: kind, text: name)
         item.fileName = name
         item.fileSize = size
         item.storedPath = "\(id.uuidString)/\(name)"
@@ -262,7 +264,7 @@ final class CubbyStore {
         }
     }
 
-    private static let kindOrder: [ItemKind: Int] = [.image: 0, .file: 1, .link: 2, .color: 3, .text: 4]
+    private static let kindOrder: [ItemKind: Int] = [.image: 0, .screenshot: 1, .file: 2, .link: 3, .color: 4, .text: 5]
 
     private static func name(of item: CubbyItem) -> String {
         item.name ?? item.fileName ?? item.title ?? item.text
@@ -394,6 +396,19 @@ final class CubbyStore {
         context.delete(item)
     }
 
+    /// Images added before Cubby told screenshots apart get their own tab too.
+    private func sortOutScreenshots() {
+        let imageRaw = ItemKind.image.rawValue
+        let images = (try? context.fetch(FetchDescriptor<CubbyItem>(predicate: #Predicate { $0.kindRaw == imageRaw }))) ?? []
+        var changed = false
+        for item in images {
+            guard let url = item.fileURL, ScreenshotCatcher.isScreenshot(url) else { continue }
+            item.kindRaw = ItemKind.screenshot.rawValue
+            changed = true
+        }
+        if changed { try? context.save() }
+    }
+
     /// Cleans up file folders whose item no longer exists, e.g. after a crash. They might
     /// hold a moved original, so their contents go to the Bin.
     private func removeOrphanedFiles() {
@@ -415,7 +430,7 @@ final class CubbyStore {
     /// receiver gets it the moment you let go: the file itself, the link, or the text.
     func pasteboardWriter(for item: CubbyItem) -> NSPasteboardWriting {
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .screenshot:
             if let url = item.fileURL { return url as NSURL }
         case .link:
             if let url = URL(string: item.text) { return url as NSURL }
@@ -548,7 +563,7 @@ final class CubbyStore {
     /// colors and text.
     func open(_ item: CubbyItem) {
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .screenshot:
             if let url = item.fileURL { NSWorkspace.shared.open(url) }
         case .link:
             if let url = URL(string: item.text) { NSWorkspace.shared.open(url) }
@@ -562,7 +577,7 @@ final class CubbyStore {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         switch item.kind {
-        case .file, .image:
+        case .file, .image, .screenshot:
             if let url = item.fileURL { pasteboard.writeObjects([url as NSURL]) }
         case .link:
             if let url = URL(string: item.text) { pasteboard.writeObjects([url as NSURL]) }
@@ -734,7 +749,7 @@ final class CubbyStore {
 
     private func transformImages(_ items: [CubbyItem],
                                  _ transform: @escaping @Sendable (URL) -> (Data?, String)) -> Task<Void, Never> {
-        let urls = items.filter { $0.kind == .image }.compactMap(\.fileURL)
+        let urls = items.filter { $0.kind.isImage }.compactMap(\.fileURL)
         return Task {
             for url in urls {
                 let work = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
