@@ -182,7 +182,7 @@ final class PanelController {
 
     /// Keys for the open card: the arrows move the selection (⇧ extends it), Return
     /// or ⌘↓ opens it, Space toggles Quick Look, as in Finder, ⌘A selects everything,
-    /// and ⌘Z / ⇧⌘Z undo and redo.
+    /// Delete or ⌘Delete moves it to the Bin, and ⌘Z / ⇧⌘Z undo and redo.
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, self.mode == .expanded,
@@ -211,6 +211,12 @@ final class PanelController {
                 let picked = self.store.selectedItems()
                 let items = picked.isEmpty && self.store.isSearching ? Array(self.store.shownItems().prefix(1)) : picked
                 for item in items { self.store.open(item) }
+            // Delete, Forward Delete, ⌘Delete. While finding, plain Delete takes a
+            // letter back instead (handled above).
+            case (51, []), (117, []), (51, .command):
+                guard event.window === self.panel, !self.store.selection.isEmpty else { return event }
+                QuickLook.shared.close()
+                self.store.binSelection()
             case (0, .command): // ⌘A
                 guard event.window === self.panel else { return event }
                 self.store.selectAll()

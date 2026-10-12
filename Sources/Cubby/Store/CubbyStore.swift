@@ -524,6 +524,15 @@ final class CubbyStore {
         shownItems().filter { selection.contains($0.id) }
     }
 
+    /// Delete with items selected: files go to the Bin, the rest are removed, as one step
+    /// ⌘Z takes back.
+    func binSelection() {
+        let picked = selectedItems()
+        guard !picked.isEmpty else { return }
+        moveToBin(picked, actionName: picked.contains { $0.fileURL != nil } ? "Move to Bin" : "Remove")
+        clearSelection()
+    }
+
     func selectAll() {
         selection = Set(shownItems().map(\.id))
     }

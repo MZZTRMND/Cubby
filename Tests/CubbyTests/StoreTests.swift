@@ -521,6 +521,25 @@ struct StoreTests {
         #expect(back.label == "#3366ff" && back.note == nil)
     }
 
+    @Test func deleteBinsTheSelectionAndUndoBringsItBack() async throws {
+        let file = try await addFile("keep.txt")
+        await paste { $0.setString("a snippet", forType: .string) }
+        await paste { $0.setString("stays", forType: .string) }
+        let undo = UndoManager()
+        store.undoManager = undo
+        store.selection = Set(items.filter { $0.text != "stays" }.map(\.id))
+        let url = try #require(file.fileURL)
+
+        store.binSelection()
+        #expect(items.map(\.text) == ["stays"] && store.selection.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+
+        undo.undo()
+        #expect(Set(items.map(\.text)) == ["stays", "a snippet", "keep.txt"])
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        for item in items { store.remove(item) }
+    }
+
     @Test func compressAddsAZipToTheCubby() async throws {
         let item = try await addFile("notes.txt", contents: String(repeating: "cubby ", count: 200))
         await store.compress(item).value
