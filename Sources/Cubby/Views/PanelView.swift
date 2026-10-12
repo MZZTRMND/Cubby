@@ -14,7 +14,7 @@ struct PanelView: View {
             ZStack {
                 if panel.mode == .expanded {
                     ExpandedCubby(items: allItems, isTargeted: isTargeted && store.draggedItemIDs.isEmpty)
-                        .padding(PanelController.inset)
+                        .padding(PanelController.expandedInset)
                         .transition(.scale(scale: 0.25, anchor: folderAnchor(in: geometry.size))
                             .combined(with: .opacity))
                 } else {

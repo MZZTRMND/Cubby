@@ -76,6 +76,8 @@ final class PanelController {
 
     /// Transparent space around the content, for shadows and items rising out of the folder.
     static let inset: CGFloat = 16
+    /// The same around the open card, wide enough for the glass's own soft shadow.
+    static let expandedInset: CGFloat = 40
     /// The open card, without the inset.
     static let expandedSize = CGSize(width: 440, height: 440)
     static let animation = Animation.spring(duration: 0.45, bounce: 0.2)
@@ -371,8 +373,8 @@ final class PanelController {
     }
 
     private func expandedFrame(around folder: NSRect) -> NSRect {
-        let size = CGSize(width: Self.expandedSize.width + 2 * Self.inset,
-                          height: Self.expandedSize.height + 2 * Self.inset)
+        let size = CGSize(width: Self.expandedSize.width + 2 * Self.expandedInset,
+                          height: Self.expandedSize.height + 2 * Self.expandedInset)
         let visible = screen?.visibleFrame ?? folder
         return Self.rect(of: size, centeredAt: CGPoint(x: folder.midX, y: folder.midY), in: visible)
     }
