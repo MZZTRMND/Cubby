@@ -28,8 +28,11 @@ echo "==> Assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_PATH/Cubby" "$APP/Contents/MacOS/Cubby"
-# Redraw with: swift Scripts/make-icon.swift AppIcon.iconset && iconutil -c icns AppIcon.iconset -o Resources/AppIcon.icns
-cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# The icon is an Icon Composer file; actool turns it into Assets.car (which macOS uses)
+# plus a fallback AppIcon.icns.
+xcrun actool Resources/AppIcon.icon --compile "$APP/Contents/Resources" \
+    --platform macosx --minimum-deployment-target 26.0 --app-icon AppIcon \
+    --output-partial-info-plist /dev/null >/dev/null
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -42,6 +45,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>$NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
