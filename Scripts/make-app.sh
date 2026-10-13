@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.."
 APP="Cubby.app"
 BUNDLE_ID="com.cubby.app"
 NAME="Cubby"
-VERSION="0.2"
+VERSION="0.3"
 if [[ "${1:-}" == "--test" ]]; then
     APP="Cubby-Test.app"
     BUNDLE_ID="com.cubby.app.test"
