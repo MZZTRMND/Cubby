@@ -125,7 +125,8 @@ private extension CustomizeView {
     static func makeSamples() -> [CubbyItem] {
         [(ItemKind.color, "#FF7A59"), (.text, "Weekend\n• farmers market\n• call Sam\n• new plants"),
          (.color, "#4D96FF"), (.link, "https://apple.com"), (.color, "#6BCB77"),
-         (.text, "Ideas: a tiny folder that lives on the desktop"), (.color, "#FFD93D"), (.color, "#B983FF")]
+         (.text, "Ideas: a tiny folder that lives on the desktop"), (.color, "#FFD93D"), (.color, "#B983FF"),
+         (.text, "Call the dentist on Tuesday"), (.color, "#FF9EC7")]
             .map { CubbyItem(kind: $0.0, text: $0.1) }
     }
 }

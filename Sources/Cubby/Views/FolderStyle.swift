@@ -24,7 +24,7 @@ struct FolderStyle: Codable, Equatable {
     var itemCount = 8
 
     static let original = FolderStyle()
-    static let maxItems = 8
+    static let maxItems = 10
 
 }
 

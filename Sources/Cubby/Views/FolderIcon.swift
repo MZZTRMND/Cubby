@@ -47,11 +47,13 @@ struct FolderIcon: View {
     /// How far the items slide up when the folder opens.
     private static let rise: CGFloat = 22
 
-    /// Up to eight items in a loose pile, as if tossed in, the newest in front. When the
+    /// Up to ten items in a loose pile, as if tossed in, the newest in front. When the
     /// folder opens they rise by slightly different amounts, spread apart and tilt more.
+    /// The last two sit further back, so a bigger pile fills in behind the first eight.
     private static let spots: [(x: CGFloat, y: CGFloat, angle: Double)] = [
         (-3, 2, -4), (14, -4, 9), (-16, -2, -11), (6, -10, 5),
         (-8, -12, -6), (20, 4, 14), (-22, 6, -15), (2, -16, 2),
+        (11, -7, 7), (-12, -9, -8),
     ]
     /// On top of `rise`, so the items don't all come up level.
     private static let fanSpread: CGFloat = 1.4
@@ -117,7 +119,8 @@ struct FolderIcon: View {
 
     /// How far the outermost fanned item, tilted, reaches past the folder's side.
     private var fanRoom: CGFloat {
-        let reach = Self.spots.map { spot in
+        // Only the spots in use, so a small pile doesn't widen the window.
+        let reach = Self.spots.prefix(style.itemCount).map { spot in
             let angle = abs(spot.angle * Self.fanTilt) * .pi / 180
             // Leaning on its bottom edge, the top corner swings out by the item's height.
             return abs(spot.x) * Self.fanSpread + Self.itemSize / 2 * cos(angle) + Self.itemSize * sin(angle) + 6
