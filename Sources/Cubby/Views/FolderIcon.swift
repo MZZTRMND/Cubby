@@ -19,6 +19,8 @@ struct FolderIcon: View {
     /// Set in Settings: the whole folder, and the items on top of that.
     @AppStorage(Self.folderScaleKey) private var folderScale = Self.defaultFolderScale
     @AppStorage(Self.itemScaleKey) private var itemScale = 1.0
+    /// Colors, set in the Customize window.
+    @FolderStyleBinding private var style
 
     /// The coordinate space the folder's drag gesture and `onFrontTop` share.
     static let space = "folderIcon"
@@ -51,15 +53,10 @@ struct FolderIcon: View {
         (-3, 2, -4), (14, -4, 9), (-16, -2, -11), (6, -10, 5),
         (-8, -12, -6), (20, 4, 14), (-22, 6, -15), (2, -16, 2),
     ]
+    /// On top of `rise`, so the items don't all come up level.
     private static let fanSpread: CGFloat = 1.4
     private static let fanTilt: Double = 1.5
-    /// On top of `rise`, so the items don't all come up level.
     private static let extraRise: [CGFloat] = [0, 4, 8]
-
-    /// White in light mode, and a gray a little lighter than the back in dark mode.
-    private static let pageColor = Color(nsColor: NSColor(name: nil) { appearance in
-        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 0.36, alpha: 1) : .white
-    })
 
     private var scale: CGFloat { CGFloat(folderScale) }
     private var itemSize: CGFloat { Self.itemSize * scale * CGFloat(itemScale) }
@@ -68,23 +65,21 @@ struct FolderIcon: View {
     var body: some View {
         let front = FolderFrontShape(topRadius: 6 * scale, bottomRadius: 11 * scale, taper: 5.5 * scale)
         ZStack(alignment: .bottom) {
-            FolderBackShape(cornerRadius: 11 * scale, tabRadius: 10 * scale, tabHeight: Self.tabHeight * scale)
-                // System colors, so the folder follows light and dark mode.
-                .fill(Color(nsColor: .underPageBackgroundColor))
-                .fill(Color(nsColor: .tertiarySystemFill))
-                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            FolderBack(style: style, scale: scale)
                 .frame(width: backSize.width, height: backSize.height)
                 .padding(.bottom, 4 * scale)
-            RoundedRectangle(cornerRadius: 4.5 * scale, style: .continuous)
-                .fill(Self.pageColor)
-                .strokeBorder(Color(nsColor: .separatorColor))
-                .frame(width: Self.pageSize.width * scale, height: Self.pageSize.height * scale)
-                .padding(.bottom, 11 * scale)
+            if style.showsPage {
+                RoundedRectangle(cornerRadius: 4.5 * scale, style: .continuous)
+                    .fill(style.page)
+                    .strokeBorder(Color(nsColor: .separatorColor))
+                    .frame(width: Self.pageSize.width * scale, height: Self.pageSize.height * scale)
+                    .padding(.bottom, 11 * scale)
+            }
             papers
             Color.clear
                 .frame(width: Self.width * scale, height: Self.frontHeight * scale)
-                // Clear glass, so the items and page show through more.
-                .glassSurface(front, glass: .clear)
+                // Clear glass by default, so the items and page show through more.
+                .glassSurface(front, glass: style.frontGlass)
                 .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(Self.space)).minY }) { onFrontTop($0) }
         }
         // Room above the back for the items to slide into.
@@ -131,7 +126,7 @@ struct FolderIcon: View {
     }
 
     private var papers: some View {
-        let shown = Array(items.prefix(Self.spots.count).enumerated())
+        let shown = Array(items.prefix(min(style.itemCount, Self.spots.count)).enumerated())
         // The fan spreads with the items, so bigger items don't crowd each other.
         let spread = scale * CGFloat(itemScale)
         return ZStack(alignment: .bottom) {
@@ -148,6 +143,28 @@ struct FolderIcon: View {
         }
         // At rest their tops sit just under the back's top edge, whatever their size.
         .padding(.bottom, (Self.backSize.height + 4 - Self.depth) * scale - itemSize)
+    }
+}
+
+/// The folder's back in the style's color: system fills by default, or the chosen color
+/// with a soft top-to-bottom gradient.
+struct FolderBack: View {
+    let style: FolderStyle
+    var scale: CGFloat = 1
+
+    var body: some View {
+        let shape = FolderBackShape(cornerRadius: 11 * scale, tabRadius: 10 * scale, tabHeight: 13 * scale)
+        if let back = style.backColor {
+            shape
+                .fill(back.color.gradient)
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        } else {
+            shape
+                // System colors, so the folder follows light and dark mode.
+                .fill(Color(nsColor: .underPageBackgroundColor))
+                .fill(Color(nsColor: .tertiarySystemFill))
+                .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+        }
     }
 }
 

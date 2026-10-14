@@ -18,6 +18,13 @@ struct CubbyApp: App {
             SettingsView()
                 .environment(app.panel)
         }
+        Window("Customize Cubby", id: CustomizeView.windowID) {
+            CustomizeView()
+                .modelContainer(app.container)
+        }
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize)
+        .restorationBehavior(.disabled)
         Window("About Cubby", id: AboutView.windowID) {
             AboutView()
         }

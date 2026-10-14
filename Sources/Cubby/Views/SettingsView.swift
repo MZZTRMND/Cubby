@@ -1,11 +1,10 @@
 import SwiftUI
 
 /// Cubby's settings: what it catches, when it comes forward, how it looks, whether it's in
-/// the Dock, and how big the folder and its items are.
+/// the Dock, and a way into the Customize window for the folder's look.
 struct SettingsView: View {
     @Environment(PanelController.self) private var panel
-    @AppStorage(FolderIcon.folderScaleKey) private var folderScale = FolderIcon.defaultFolderScale
-    @AppStorage(FolderIcon.itemScaleKey) private var itemScale = 1.0
+    @FolderStyleBinding private var style
     @AppStorage(ScreenshotCatcher.enabledKey) private var catchScreenshots = false
     @AppStorage(DragSummon.key) private var dragSummon = DragSummon.shake
     @AppStorage(DockIcon.key) private var showInDock = false
@@ -41,19 +40,25 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                SizeSlider(title: "Folder", symbol: "folder", range: FolderIcon.folderScaleRange, value: $folderScale)
-                SizeSlider(title: "Items", symbol: "doc", range: FolderIcon.itemScaleRange, value: $itemScale)
-            } header: {
-                Text("Size")
-            } footer: {
-                HStack {
-                    Spacer()
-                    Button("Reset") {
-                        folderScale = FolderIcon.defaultFolderScale
-                        itemScale = 1
+                HStack(spacing: 14) {
+                    MiniFolder(style: style, width: 46)
+                        .frame(width: 58, height: 50)
+                        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Folder Style")
+                        Text(style.paletteName)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
-                    .disabled(folderScale == FolderIcon.defaultFolderScale && itemScale == 1)
+                    Spacer()
+                    CustomizeButton()
                 }
+            } header: {
+                Text("Look")
+            } footer: {
+                Text("Colors and size.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -68,33 +73,5 @@ private extension SettingsView {
         let folder = ScreenshotCatcher.screenshotFolder()
         if folder.standardizedFileURL == URL.desktopDirectory.standardizedFileURL { return "the Desktop" }
         return FileManager.default.displayName(atPath: folder.path)
-    }
-}
-
-private struct SizeSlider: View {
-    let title: String
-    let symbol: String
-    let range: ClosedRange<Double>
-    @Binding var value: Double
-
-    var body: some View {
-        LabeledContent {
-            HStack(spacing: 12) {
-                Slider(value: $value, in: range) {
-                    Text(title)
-                } minimumValueLabel: {
-                    Image(systemName: symbol).imageScale(.small)
-                } maximumValueLabel: {
-                    Image(systemName: symbol).imageScale(.large)
-                }
-                .labelsHidden()
-                Text(value, format: .percent.precision(.fractionLength(0)))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, alignment: .trailing)
-            }
-        } label: {
-            Text(title)
-        }
     }
 }
