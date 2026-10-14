@@ -70,13 +70,11 @@ struct FolderIcon: View {
             FolderBack(style: style, scale: scale)
                 .frame(width: backSize.width, height: backSize.height)
                 .padding(.bottom, 4 * scale)
-            if style.showsPage {
-                RoundedRectangle(cornerRadius: 4.5 * scale, style: .continuous)
-                    .fill(style.page)
-                    .strokeBorder(Color(nsColor: .separatorColor))
-                    .frame(width: Self.pageSize.width * scale, height: Self.pageSize.height * scale)
-                    .padding(.bottom, 11 * scale)
-            }
+            RoundedRectangle(cornerRadius: 4.5 * scale, style: .continuous)
+                .fill(style.page)
+                .strokeBorder(Color(nsColor: .separatorColor))
+                .frame(width: Self.pageSize.width * scale, height: Self.pageSize.height * scale)
+                .padding(.bottom, 11 * scale)
             papers
             Color.clear
                 .frame(width: Self.width * scale, height: Self.frontHeight * scale)
@@ -149,7 +147,7 @@ struct FolderIcon: View {
     }
 }
 
-/// The folder's back in the style's color: system fills by default, or the chosen color
+/// The folder's back in the theme's color: system fills by default, or the theme's color
 /// with a soft top-to-bottom gradient.
 struct FolderBack: View {
     let style: FolderStyle
@@ -157,9 +155,9 @@ struct FolderBack: View {
 
     var body: some View {
         let shape = FolderBackShape(cornerRadius: 11 * scale, tabRadius: 10 * scale, tabHeight: 13 * scale)
-        if let back = style.backColor {
+        if let back = style.theme.back {
             shape
-                .fill(back.color.gradient)
+                .fill(back.gradient)
                 .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
         } else {
             shape

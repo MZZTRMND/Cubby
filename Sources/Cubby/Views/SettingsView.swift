@@ -46,7 +46,7 @@ struct SettingsView: View {
                         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Folder Style")
-                        Text(style.paletteName)
+                        Text(style.theme.name)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -56,7 +56,7 @@ struct SettingsView: View {
             } header: {
                 Text("Look")
             } footer: {
-                Text("Colors and size.")
+                Text("Theme and size.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

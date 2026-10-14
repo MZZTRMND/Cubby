@@ -6,72 +6,92 @@ import SwiftUI
 struct FolderStyle: Codable, Equatable {
     static let key = "folderStyle"
 
-    // MARK: Color
-
-    /// The back's color; nil uses the system colors, which follow light and dark mode.
-    var backColor: RGBA?
-    /// The page standing behind the items; nil is white, or gray in dark mode.
-    var pageColor: RGBA?
-    var showsPage = true
-    /// A wash of color over the glass front, and how strong it is.
-    var glassTint: RGBA?
-    var glassTintAmount = 0.3
-    /// Regular glass instead of clear: blurrier, so the items show through less.
-    var isFrosted = false
-
-    // MARK: Items
-
+    var theme = Theme.original
+    /// How many of the newest items stand in the folder.
     var itemCount = 8
 
     static let original = FolderStyle()
     static let maxItems = 10
-
 }
 
 extension FolderStyle {
-    /// Ready-made color sets.
-    struct Palette: Identifiable {
-        let name: String
-        let back: RGBA?
-        let page: RGBA?
-        let tint: RGBA?
-        var tintAmount = 0.3
-        var id: String { name }
+    /// The folder's colors. Every theme has a light and a dark version, so it follows the
+    /// system appearance.
+    enum Theme: String, Codable, CaseIterable, Identifiable {
+        case original, ocean, mint, lavender, blush, sunset, paper, graphite
+        var id: Self { self }
 
-        static let all: [Palette] = [
-            Palette(name: "Original", back: nil, page: nil, tint: nil),
-            Palette(name: "Ocean", back: RGBA(0.27, 0.58, 0.95), page: RGBA(1, 1, 1), tint: RGBA(0.40, 0.68, 0.98)),
-            Palette(name: "Mint", back: RGBA(0.30, 0.76, 0.62), page: RGBA(1, 1, 1), tint: RGBA(0.52, 0.88, 0.76)),
-            Palette(name: "Lavender", back: RGBA(0.58, 0.52, 0.93), page: RGBA(1, 1, 1), tint: RGBA(0.72, 0.68, 0.98)),
-            Palette(name: "Blush", back: RGBA(0.95, 0.56, 0.64), page: RGBA(1, 1, 1), tint: RGBA(1, 0.74, 0.79)),
-            Palette(name: "Sunset", back: RGBA(0.98, 0.60, 0.28), page: RGBA(1, 0.99, 0.96), tint: RGBA(1, 0.76, 0.48)),
-            Palette(name: "Paper", back: RGBA(0.92, 0.89, 0.82), page: RGBA(1, 0.99, 0.96), tint: RGBA(0.98, 0.96, 0.90), tintAmount: 0.4),
-            Palette(name: "Graphite", back: RGBA(0.22, 0.22, 0.24), page: RGBA(0.42, 0.42, 0.44), tint: RGBA(0, 0, 0), tintAmount: 0.35),
-        ]
+        var name: String { rawValue.capitalized }
+
+        /// The back's color; nil uses the system fills.
+        var back: Color? {
+            switch self {
+            case .original: nil
+            case .ocean: .adaptive(light: (0.27, 0.58, 0.95), dark: (0.16, 0.38, 0.72))
+            case .mint: .adaptive(light: (0.30, 0.76, 0.62), dark: (0.15, 0.50, 0.40))
+            case .lavender: .adaptive(light: (0.58, 0.52, 0.93), dark: (0.36, 0.31, 0.68))
+            case .blush: .adaptive(light: (0.95, 0.56, 0.64), dark: (0.68, 0.30, 0.39))
+            case .sunset: .adaptive(light: (0.98, 0.60, 0.28), dark: (0.74, 0.38, 0.14))
+            case .paper: .adaptive(light: (0.92, 0.89, 0.82), dark: (0.36, 0.34, 0.31))
+            case .graphite: .adaptive(light: (0.22, 0.22, 0.24), dark: (0.12, 0.12, 0.13))
+            }
+        }
+
+        /// The page standing behind the items: light in light mode, a muted shade of the
+        /// back in dark mode.
+        var page: Color {
+            switch self {
+            case .original: .adaptive(light: (1, 1, 1), dark: (0.36, 0.36, 0.36))
+            case .ocean: .adaptive(light: (1, 1, 1), dark: (0.32, 0.43, 0.58))
+            case .mint: .adaptive(light: (1, 1, 1), dark: (0.30, 0.47, 0.42))
+            case .lavender: .adaptive(light: (1, 1, 1), dark: (0.42, 0.40, 0.57))
+            case .blush: .adaptive(light: (1, 1, 1), dark: (0.55, 0.40, 0.44))
+            case .sunset: .adaptive(light: (1, 0.99, 0.96), dark: (0.56, 0.44, 0.35))
+            case .paper: .adaptive(light: (1, 0.99, 0.96), dark: (0.50, 0.48, 0.44))
+            case .graphite: .adaptive(light: (0.42, 0.42, 0.44), dark: (0.26, 0.26, 0.27))
+            }
+        }
+
+        /// A wash of color over the glass front; nil leaves it clear.
+        var tint: Color? {
+            switch self {
+            case .original: nil
+            case .ocean: .adaptive(light: (0.40, 0.68, 0.98), dark: (0.18, 0.40, 0.74))
+            case .mint: .adaptive(light: (0.52, 0.88, 0.76), dark: (0.16, 0.46, 0.38))
+            case .lavender: .adaptive(light: (0.72, 0.68, 0.98), dark: (0.34, 0.30, 0.64))
+            case .blush: .adaptive(light: (1, 0.74, 0.79), dark: (0.62, 0.30, 0.38))
+            case .sunset: .adaptive(light: (1, 0.76, 0.48), dark: (0.68, 0.38, 0.16))
+            case .paper: .adaptive(light: (0.98, 0.96, 0.90), dark: (0.40, 0.38, 0.34))
+            case .graphite: .black
+            }
+        }
+
+        var tintAmount: Double {
+            switch self {
+            case .paper: 0.4
+            case .graphite: 0.35
+            default: 0.3
+            }
+        }
     }
 
-    func uses(_ palette: Palette) -> Bool {
-        backColor == palette.back && pageColor == palette.page && glassTint == palette.tint
-            && (palette.tint == nil || glassTintAmount == palette.tintAmount)
+    var page: Color { theme.page }
+
+    /// Clear glass, so the items and page show through, washed with the theme's tint.
+    var frontGlass: Glass {
+        guard let tint = theme.tint else { return .clear }
+        return .clear.tint(tint.opacity(theme.tintAmount))
     }
+}
 
-    mutating func apply(_ palette: Palette) {
-        backColor = palette.back
-        pageColor = palette.page
-        glassTint = palette.tint
-        glassTintAmount = palette.tintAmount
+private extension Color {
+    /// One color in light mode and another in dark mode, as sRGB.
+    static func adaptive(light: (Double, Double, Double), dark: (Double, Double, Double)) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let c = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1)
+        })
     }
-
-    var paletteName: String { Palette.all.first(where: uses)?.name ?? "Custom" }
-
-    mutating func resetColor() {
-        apply(Palette.all[0])
-        showsPage = Self.original.showsPage
-        isFrosted = Self.original.isFrosted
-    }
-
-
-    var isOriginalColor: Bool { uses(Palette.all[0]) && showsPage && !isFrosted }
 }
 
 // MARK: Storage
@@ -89,38 +109,6 @@ extension FolderStyle {
 
     var json: String {
         (try? JSONEncoder().encode(self)).map { String(decoding: $0, as: UTF8.self) } ?? ""
-    }
-}
-
-/// A color that can be saved: sRGB components.
-struct RGBA: Codable, Equatable, Hashable {
-    var red, green, blue: Double
-    var alpha = 1.0
-
-    init(_ red: Double, _ green: Double, _ blue: Double, _ alpha: Double = 1) {
-        (self.red, self.green, self.blue, self.alpha) = (red, green, blue, alpha)
-    }
-
-    init(_ color: Color) {
-        let ns = NSColor(color).usingColorSpace(.sRGB) ?? .gray
-        self.init(ns.redComponent, ns.greenComponent, ns.blueComponent, ns.alphaComponent)
-    }
-
-    var color: Color { Color(.sRGB, red: red, green: green, blue: blue, opacity: alpha) }
-}
-
-extension FolderStyle {
-    /// The page: the chosen color, or white in light mode and gray in dark mode.
-    var page: Color {
-        pageColor?.color ?? Color(nsColor: NSColor(name: nil) { appearance in
-            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(white: 0.36, alpha: 1) : .white
-        })
-    }
-
-    var frontGlass: Glass {
-        let glass: Glass = isFrosted ? .regular : .clear
-        guard let glassTint else { return glass }
-        return glass.tint(glassTint.color.opacity(glassTintAmount))
     }
 }
 

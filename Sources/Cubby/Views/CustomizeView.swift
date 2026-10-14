@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// The Customize window: a live preview of the folder on the left, and its color and size
+/// The Customize window: a live preview of the folder on the left, and its theme and size
 /// on the right. Every change applies to the desktop folder right away.
 struct CustomizeView: View {
     static let windowID = "customize"
@@ -12,19 +12,19 @@ struct CustomizeView: View {
     @Query(sort: \CubbyItem.addedAt, order: .reverse) private var items: [CubbyItem]
     @Environment(\.dismiss) private var dismiss
 
-    @State private var tab = Tab.color
+    @State private var tab = Tab.theme
     @State private var holdsOpen = false
     @State private var isPlaying = false
     @State private var previewScheme = PreviewScheme.system
     @State private var samples = Self.makeSamples()
 
     enum Tab: String, CaseIterable, Identifiable {
-        case color, size
+        case theme, size
         var id: Self { self }
         var title: String { rawValue.capitalized }
         var symbol: String {
             switch self {
-            case .color: "paintpalette"
+            case .theme: "paintpalette"
             case .size: "arrow.up.left.and.arrow.down.right"
             }
         }
@@ -198,11 +198,11 @@ private extension CustomizeView {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Customize Cubby")
                         .font(.title3.weight(.semibold))
-                    Text(style.paletteName)
+                    Text(style.theme.name)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
-                        .animation(.snappy, value: style.paletteName)
+                        .animation(.snappy, value: style.theme)
                 }
                 TabBar(selection: $tab)
             }
@@ -212,7 +212,7 @@ private extension CustomizeView {
 
             Group {
                 switch tab {
-                case .color: ColorTab(style: $style)
+                case .theme: ThemeTab(style: $style)
                 case .size: SizeTab(style: $style, folderScale: $folderScale, itemScale: $itemScale)
                 }
             }
@@ -281,53 +281,38 @@ private struct TabBar: View {
     }
 }
 
-// MARK: Color
+// MARK: Theme
 
-private struct ColorTab: View {
+private struct ThemeTab: View {
     @Binding var style: FolderStyle
 
     private static let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
     var body: some View {
         Form {
-            Section("Palette") {
+            Section {
                 LazyVGrid(columns: Self.columns, spacing: 12) {
-                    ForEach(FolderStyle.Palette.all) { palette in
-                        PaletteCard(palette: palette, style: style, isSelected: style.uses(palette)) {
-                            withAnimation(.snappy) { style.apply(palette) }
+                    ForEach(FolderStyle.Theme.allCases) { theme in
+                        ThemeCard(theme: theme, style: style, isSelected: style.theme == theme) {
+                            withAnimation(.snappy) { style.theme = theme }
                         }
                     }
                 }
                 .padding(.vertical, 4)
-            }
-            Section("Folder") {
-                SwatchPicker(title: "Back", automatic: .system, selection: $style.backColor)
-            }
-            Section("Glass Front") {
-                SwatchPicker(title: "Tint", automatic: .none, selection: $style.glassTint)
-                StyleSlider(title: "Strength", value: $style.glassTintAmount, in: 0.05...0.8, format: .percent)
-                    .disabled(style.glassTint == nil)
-                Toggle("Frosted", isOn: $style.isFrosted)
-            }
-            Section {
-                Toggle("Show page", isOn: $style.showsPage.animation(.snappy))
-                if style.showsPage {
-                    SwatchPicker(title: "Color", automatic: .system, selection: $style.pageColor)
-                }
             } header: {
-                Text("Page")
+                Text("Theme")
             } footer: {
-                ResetFooter(note: "System colors follow light and dark mode.", isDisabled: style.isOriginalColor) {
-                    style.resetColor()
-                }
+                Text("Every theme follows light and dark mode.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 }
 
-/// A palette as a little folder with its name; picking it changes only the colors.
-private struct PaletteCard: View {
-    let palette: FolderStyle.Palette
+/// A theme as a little folder with its name.
+private struct ThemeCard: View {
+    let theme: FolderStyle.Theme
     let style: FolderStyle
     let isSelected: Bool
     let action: () -> Void
@@ -336,7 +321,7 @@ private struct PaletteCard: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 6) {
-                MiniFolder(style: { var s = style; s.apply(palette); return s }(), width: 44)
+                MiniFolder(style: { var s = style; s.theme = theme; return s }(), width: 44)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
                     .background(.fill.quaternary.opacity(isHovered ? 1.6 : 1),
@@ -345,7 +330,7 @@ private struct PaletteCard: View {
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 2)
                     }
-                Text(palette.name)
+                Text(theme.name)
                     .font(.caption)
                     .foregroundStyle(isSelected ? .primary : .secondary)
             }
@@ -357,7 +342,7 @@ private struct PaletteCard: View {
     }
 }
 
-/// A small, static drawing of the folder in a style, for palettes and Settings.
+/// A small, static drawing of the folder in a style, for themes and Settings.
 struct MiniFolder: View {
     let style: FolderStyle
     var width: CGFloat = 44
@@ -370,118 +355,20 @@ struct MiniFolder: View {
             FolderBack(style: style, scale: s)
                 .frame(width: 132 * s, height: 104 * s)
                 .padding(.bottom, 4 * s)
-            if style.showsPage {
-                RoundedRectangle(cornerRadius: 4.5 * s, style: .continuous)
-                    .fill(style.page)
-                    .frame(width: 105 * s, height: 77 * s)
-                    .padding(.bottom, 11 * s)
-            }
+            RoundedRectangle(cornerRadius: 4.5 * s, style: .continuous)
+                .fill(style.page)
+                .frame(width: 105 * s, height: 77 * s)
+                .padding(.bottom, 11 * s)
             front
                 .fill(.ultraThinMaterial)
                 .overlay {
-                    front.fill(style.glassTint.map { $0.color.opacity(style.glassTintAmount + 0.2) }
+                    front.fill(style.theme.tint.map { $0.opacity(style.theme.tintAmount + 0.2) }
                                ?? .white.opacity(colorScheme == .dark ? 0.08 : 0.3))
                 }
                 .overlay { front.stroke(.white.opacity(0.5), lineWidth: 0.5) }
                 .frame(width: width, height: 78 * s)
         }
         .frame(width: width, height: 108 * s, alignment: .bottom)
-    }
-}
-
-/// A title over a row of color dots: the automatic choice first, a few colors, and the
-/// system color picker for anything else.
-private struct SwatchPicker: View {
-    enum Automatic { case system, none }
-
-    let title: String
-    let automatic: Automatic
-    @Binding var selection: RGBA?
-
-    private static let swatches: [RGBA] = [
-        RGBA(0.98, 0.36, 0.34), RGBA(0.98, 0.60, 0.28), RGBA(0.99, 0.82, 0.30), RGBA(0.30, 0.76, 0.48),
-        RGBA(0.27, 0.52, 0.96), RGBA(0.58, 0.48, 0.94), RGBA(0.22, 0.22, 0.24),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                Spacer()
-                Text(selection == nil ? (automatic == .system ? "System" : "None") : hex)
-                    .font(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 5) {
-                Dot(isSelected: selection == nil) {
-                    automaticFill
-                } action: {
-                    selection = nil
-                }
-                .help(automatic == .system ? "System color" : "No tint")
-                ForEach(Self.swatches, id: \.self) { swatch in
-                    Dot(isSelected: selection == swatch) {
-                        Circle().fill(swatch.color.gradient)
-                    } action: {
-                        selection = swatch
-                    }
-                }
-                Spacer(minLength: 0)
-                ColorPicker(title, selection: Binding(
-                    get: { selection?.color ?? .gray },
-                    set: { selection = RGBA($0) }
-                ), supportsOpacity: false)
-                .labelsHidden()
-                .help("Any color")
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private var hex: String {
-        guard let c = selection else { return "" }
-        return String(format: "#%02X%02X%02X", Int(c.red * 255), Int(c.green * 255), Int(c.blue * 255))
-    }
-
-    @ViewBuilder private var automaticFill: some View {
-        switch automatic {
-        case .system:
-            // Half light, half dark: it follows the appearance.
-            Circle().fill(LinearGradient(stops: [.init(color: Color(white: 0.92), location: 0.5),
-                                                 .init(color: Color(white: 0.28), location: 0.5)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-        case .none:
-            Circle().fill(Color(nsColor: .textBackgroundColor))
-                .overlay {
-                    Rectangle().fill(.red).frame(width: 1.5).rotationEffect(.degrees(45))
-                }
-                .clipShape(Circle())
-        }
-    }
-
-    private struct Dot<Fill: View>: View {
-        let isSelected: Bool
-        @ViewBuilder let fill: Fill
-        let action: () -> Void
-        @State private var isHovered = false
-
-        var body: some View {
-            Button(action: action) {
-                fill
-                    .frame(width: 20, height: 20)
-                    .overlay { Circle().strokeBorder(.separator) }
-                    .padding(2.5)
-                    .overlay {
-                        Circle().strokeBorder(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear), lineWidth: 2)
-                    }
-                    .scaleEffect(isHovered && !isSelected ? 1.1 : 1)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .onHover { isHovered = $0 }
-            .animation(.snappy(duration: 0.2), value: isHovered)
-            .animation(.snappy(duration: 0.2), value: isSelected)
-        }
     }
 }
 
@@ -529,16 +416,14 @@ private struct StyleSlider: View {
     let range: ClosedRange<Double>
     var step: Double? = nil
     let format: Format
-    var onCommit: () -> Void = {}
 
     init(title: String, value: Binding<Double>, in range: ClosedRange<Double>, step: Double? = nil,
-         format: Format, onCommit: @escaping () -> Void = {}) {
+         format: Format) {
         self.title = title
         self._value = value
         self.range = range
         self.step = step
         self.format = format
-        self.onCommit = onCommit
     }
 
     var body: some View {
@@ -553,9 +438,9 @@ private struct StyleSlider: View {
             }
             Group {
                 if let step {
-                    Slider(value: $value, in: range, step: step) { Text(title) } onEditingChanged: { if !$0 { onCommit() } }
+                    Slider(value: $value, in: range, step: step) { Text(title) }
                 } else {
-                    Slider(value: $value, in: range) { Text(title) } onEditingChanged: { if !$0 { onCommit() } }
+                    Slider(value: $value, in: range) { Text(title) }
                 }
             }
             .labelsHidden()
