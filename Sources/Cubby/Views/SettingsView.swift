@@ -21,8 +21,8 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("New screenshots move into Cubby instead of landing in \(screenshotFolderName).")
                     Text(dragSummon == .shake
-                         ? "Give something you're dragging in another app a quick shake, and Cubby comes to the middle of the screen so you can drop it in."
-                         : "When you start dragging something in another app, Cubby comes to the middle of the screen so you can drop it in.")
+                         ? "Give something you're dragging in another app a quick shake, and Cubby pops up right next to it so you can drop it in."
+                         : "When you start dragging something in another app, Cubby pops up right next to it so you can drop it in.")
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)

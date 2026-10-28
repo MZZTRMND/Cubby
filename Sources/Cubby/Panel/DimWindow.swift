@@ -1,6 +1,6 @@
 import AppKit
 
-/// A dark veil over a whole screen, under the folder while it waits in the middle for a
+/// A dark veil over a whole screen, under the folder while it waits by the pointer for a
 /// drag. Clicks and drags go straight through it to whatever is underneath.
 final class DimWindow: NSWindow {
     private var isVisibleForDrag = false

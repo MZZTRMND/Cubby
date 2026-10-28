@@ -33,7 +33,7 @@ final class PanelController {
     private(set) var folderOffset: CGSize = .zero
 
     /// Shrunk out of sight for a moment while the folder pops between its spot and the
-    /// middle of the screen for a drag.
+    /// pointer for a drag.
     private(set) var isPoppedAway = false
 
     /// The folder's natural size including the inset, reported by SwiftUI.
@@ -473,7 +473,7 @@ final class PanelController {
 
     /// Watches for drags starting in other apps. A press that puts something on the drag
     /// pasteboard is a drag of files, links or text, not a window being moved, so the
-    /// folder comes to the middle of the screen you're on, over a dimmed screen, to take
+    /// folder pops up next to the pointer, over a dimmed screen, to take
     /// it, and goes back to its spot afterwards. Watching mouse presses in other apps
     /// needs no special permission.
     private func installDragWatcher() {
@@ -516,10 +516,18 @@ final class PanelController {
         // Just above the veil, and on whichever desktop you're on.
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        let visible = screen.visibleFrame
         panel.orderFrontRegardless()
-        pop(to: Self.rect(of: panel.frame.size, centeredAt: CGPoint(x: visible.midX, y: visible.midY), in: visible),
+        pop(to: Self.frame(of: panel.frame.size, beside: mouse, in: screen.visibleFrame),
             appear: .spring(duration: 0.32, bounce: 0.35))
+    }
+
+    /// Next to the pointer, level with it: to the right, or to the left when there's no
+    /// room. Not under it, so letting go straight after the shake doesn't drop by accident.
+    private static func frame(of size: CGSize, beside mouse: NSPoint, in visible: NSRect) -> NSRect {
+        let gap: CGFloat = 12
+        let fitsRight = mouse.x + gap + size.width <= visible.maxX
+        let x = fitsRight ? mouse.x + gap + size.width / 2 : mouse.x - gap - size.width / 2
+        return rect(of: size, centeredAt: CGPoint(x: x, y: mouse.y), in: visible)
     }
 
     /// Back to its own spot once the drag is over, after a moment to see a drop land.

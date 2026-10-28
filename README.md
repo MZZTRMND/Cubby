@@ -18,7 +18,7 @@ A little folder that lives on your Mac's desktop. Drop in files, images, screens
 - **Takes anything.** Drag in files, images, links, text or colors. Files from the Desktop move in, so your desktop stays clean.
 - **Opens into a card.** Click the folder to see everything in a grid, sorted into tabs: Images, Screenshots, Files, Links, Colors and Text. Start typing to find something.
 - **Gives it back.** Drag an item out to wherever you need it, or grab the papers sticking out of the folder to take everything at once.
-- **Comes to you.** Dragging something in another app? Give it a quick shake, and Cubby pops up in the middle of the screen, ready for the drop.
+- **Comes to you.** Dragging something in another app? Give it a quick shake, and Cubby pops up right next to your pointer, ready for the drop.
 - **Catches screenshots.** Turn it on, and new screenshots go straight into Cubby instead of piling up on the desktop.
 
 ### Handy extras
