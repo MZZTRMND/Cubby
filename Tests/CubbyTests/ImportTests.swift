@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Testing
 @testable import Cubby
 
@@ -109,5 +110,32 @@ struct ShakeDetectorTests {
 
     @Test func slowBackAndForthDoesNot() {
         #expect(!shaken(swings(4, width: 80), step: 0.2))
+    }
+}
+
+struct ThumbnailFormatTests {
+    /// A 200×100 image encoded as PNG, with or without an alpha channel.
+    private func png(alpha: Bool) throws -> Data {
+        let info = alpha ? CGImageAlphaInfo.premultipliedLast : .noneSkipLast
+        let context = try #require(CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: info.rawValue))
+        context.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.8, alpha: alpha ? 0.5 : 1))
+        context.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
+        let image = try #require(context.makeImage())
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    @Test func opaqueImagesBecomeJPEG() throws {
+        let thumbnail = try #require(ImageData.thumbnail(of: try png(alpha: false)))
+        #expect(thumbnail.prefix(2) == Data([0xFF, 0xD8]))
+    }
+
+    @Test func transparentImagesStayPNG() throws {
+        let thumbnail = try #require(ImageData.thumbnail(of: try png(alpha: true)))
+        #expect(thumbnail.prefix(4) == Data([0x89, 0x50, 0x4E, 0x47]))
     }
 }

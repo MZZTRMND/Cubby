@@ -2,7 +2,7 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Downscaled PNG thumbnails, PNG conversion for pasted image data, and the image Quick
+/// Downscaled thumbnails (JPEG, or PNG when there's transparency), PNG conversion for pasted image data, and the image Quick
 /// Actions.
 enum ImageData {
     /// The image at `url` as `type`, scaled by `scale`, keeping its orientation and color
@@ -47,7 +47,25 @@ enum ImageData {
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: maxPixel,
         ]
-        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).flatMap(png)
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        // Photos and most screenshots have no transparency: as JPEG they're a fraction
+        // of the size and quicker to decode. Anything with an alpha channel stays PNG.
+        return hasAlpha(image) ? png(image) : jpeg(image)
+    }
+
+    private static func hasAlpha(_ image: CGImage) -> Bool {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast: false
+        default: true
+        }
+    }
+
+    private static func jpeg(_ image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)
+        else { return nil }
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
     private static func png(_ image: CGImage) -> Data? {

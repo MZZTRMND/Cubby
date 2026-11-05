@@ -122,6 +122,10 @@ final class ItemDragSource: NSObject, NSDraggingSource {
         return NSEvent.modifierFlags.contains(.option) ? .copy : .move
     }
 
+    /// Only the first few dragged items get a picture: they're all the stack under the
+    /// pointer shows, and rendering every one of a big selection held up the drag.
+    static let picturedItems = 5
+
     /// Whether the dragged files left the cubby: dropped somewhere, and not as a copy.
     static func leftCubby(_ operation: NSDragOperation) -> Bool {
         !operation.isEmpty && !operation.contains(.copy)

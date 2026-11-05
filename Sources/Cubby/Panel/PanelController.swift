@@ -455,7 +455,8 @@ final class PanelController {
         let point = view.convert(press.locationInWindow, from: nil)
         let pieces = ordered.enumerated().map { index, item in
             let piece = NSDraggingItem(pasteboardWriter: store.pasteboardWriter(for: item))
-            let image = ImageRenderer(content: ItemGlyph(item: item, size: 64, natural: true)).nsImage
+            let image = (index < ItemDragSource.picturedItems
+                ? ImageRenderer(content: ItemGlyph(item: item, size: 64, natural: true)).nsImage : nil)
                 ?? NSImage(size: NSSize(width: 64, height: 64))
             // The first few fan out under the pointer; the rest stack behind them.
             let step = CGFloat(min(index, 4)) * 6

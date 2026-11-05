@@ -11,7 +11,7 @@ struct ItemGlyph: View {
     var body: some View {
         if natural && item.kind == .file {
             fileIcon.frame(width: size, height: size)
-        } else if natural && item.kind.isImage, let data = item.thumbnail, let image = NSImage(data: data) {
+        } else if natural && item.kind.isImage, let image = PreviewCache.image(item.thumbnail, for: item, slot: .thumbnail) {
             Image(nsImage: image)
                 .resizable()
                 .scaledToFit()
@@ -47,7 +47,7 @@ struct ItemGlyph: View {
         case .color:
             Rectangle().fill(ColorParser.color(item.text) ?? .clear)
         case .image, .screenshot:
-            if let data = item.thumbnail, let image = NSImage(data: data) {
+            if let image = PreviewCache.image(item.thumbnail, for: item, slot: .thumbnail) {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
                 fileIcon
@@ -55,7 +55,7 @@ struct ItemGlyph: View {
         case .file:
             fileIcon
         case .link:
-            if let data = item.favicon, let icon = NSImage(data: data) {
+            if let icon = PreviewCache.image(item.favicon, for: item, slot: .favicon) {
                 Image(nsImage: icon)
                     .resizable()
                     .clipShape(RoundedRectangle(cornerRadius: size / 8))
@@ -97,5 +97,29 @@ struct ItemGlyph: View {
 
     private var tileBackground: AnyShapeStyle {
         natural ? AnyShapeStyle(Color(nsColor: .textBackgroundColor)) : AnyShapeStyle(.fill.tertiary)
+    }
+}
+
+/// Decoded thumbnails and favicons, so redrawing the grid or the folder (every selection
+/// change, every hover) reuses them instead of decoding the saved image data each time.
+@MainActor
+enum PreviewCache {
+    enum Slot: String { case thumbnail, favicon }
+
+    private static let cache: NSCache<NSString, NSImage> = {
+        let cache = NSCache<NSString, NSImage>()
+        cache.countLimit = 400
+        return cache
+    }()
+
+    /// The image for `data`. The key includes the data's size, so a favicon that arrives
+    /// later, or a replaced thumbnail, isn't mistaken for the old one.
+    static func image(_ data: Data?, for item: CubbyItem, slot: Slot) -> NSImage? {
+        guard let data else { return nil }
+        let key = "\(item.id.uuidString)-\(slot.rawValue)-\(data.count)" as NSString
+        if let cached = cache.object(forKey: key) { return cached }
+        guard let image = NSImage(data: data) else { return nil }
+        cache.setObject(image, forKey: key)
+        return image
     }
 }

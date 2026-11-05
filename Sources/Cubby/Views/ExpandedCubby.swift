@@ -577,10 +577,12 @@ private struct GridItemView: View {
     private func startDrag() -> (pieces: [ItemInteraction.Piece], movesOut: Bool) {
         let group = dragGroup()
         store.draggedItemIDs = Set(group.map(\.id))
-        let pieces = group.map { item in
+        let pieces = group.enumerated().map { index, item in
             ItemInteraction.Piece(
                 writer: store.pasteboardWriter(for: item),
-                image: ImageRenderer(content: ItemGlyph(item: item, size: Self.iconSize, natural: true)).nsImage
+                image: index < ItemDragSource.picturedItems
+                    ? ImageRenderer(content: ItemGlyph(item: item, size: Self.iconSize, natural: true)).nsImage
+                    : nil
             )
         }
         return (pieces, group.contains { store.movesOut($0) })
