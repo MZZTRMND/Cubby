@@ -99,10 +99,18 @@ struct StoreTests {
         #expect(setxattr(shot.path, "com.apple.metadata:kMDItemIsScreenCapture", "1", 1, 0, 0) == 0)
         #expect(ScreenshotCatcher.isScreenshot(shot))
 
+        #expect(ScreenshotCatcher.shouldCatch(shot))
+
         await store.addScreenshot(shot).value
         #expect(!FileManager.default.fileExists(atPath: shot.path))
         let item = try #require(items.first)
         #expect(item.kind == .screenshot && item.isOriginal && item.thumbnail != nil)
+
+        // Taken back out to the screenshot folder, it isn't caught a second time.
+        let back = folder.appending(path: "Screenshot.png")
+        try FileManager.default.copyItem(at: try #require(item.fileURL), to: back)
+        #expect(ScreenshotCatcher.isScreenshot(back))
+        #expect(!ScreenshotCatcher.shouldCatch(back))
         store.remove(item)
     }
 

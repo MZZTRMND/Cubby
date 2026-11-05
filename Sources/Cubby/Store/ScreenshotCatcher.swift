@@ -3,7 +3,9 @@ import Foundation
 /// Watches the folder macOS saves screenshots to and moves each new screenshot into the
 /// cubby, so they stop piling up on the Desktop. Screenshots are recognised by the mark
 /// macOS puts on them (`kMDItemIsScreenCapture`), not by name, so other files arriving
-/// there are left alone, and so is everything that was there before.
+/// there are left alone, and so is everything that was there before. Screenshots that
+/// have already been in the cubby carry a mark of Cubby's own, so taking one back out to
+/// the Desktop doesn't catch it again.
 @MainActor
 final class ScreenshotCatcher {
     static let enabledKey = "catchScreenshots"
@@ -76,7 +78,7 @@ final class ScreenshotCatcher {
             // Hidden files are screenshots still being written; look again once renamed.
             guard !url.lastPathComponent.hasPrefix(".") else { continue }
             seen.insert(url.lastPathComponent)
-            if Self.isScreenshot(url) { onCatch?(url) }
+            if Self.shouldCatch(url) { onCatch?(url) }
         }
         // Forget names that have left, so a new file with the same name is noticed.
         seen.formIntersection(Self.contents(of: folder).map(\.lastPathComponent))
@@ -88,6 +90,24 @@ final class ScreenshotCatcher {
 
     static func isScreenshot(_ url: URL) -> Bool {
         getxattr(url.path, "com.apple.metadata:kMDItemIsScreenCapture", nil, 0, 0, 0) >= 0
+    }
+
+    /// A new screenshot, not one you took out of the cubby.
+    static func shouldCatch(_ url: URL) -> Bool {
+        isScreenshot(url) && !hasBeenInCubby(url)
+    }
+
+    /// Cubby's mark on a screenshot it holds. Moving or copying the file keeps it, so the
+    /// screenshot is still recognised however it leaves: dragged out, Move to Desktop or
+    /// copy and paste.
+    private static let heldMark = "com.cubby.held"
+
+    static func markHeld(_ url: URL) {
+        setxattr(url.path, heldMark, "1", 1, 0, 0)
+    }
+
+    static func hasBeenInCubby(_ url: URL) -> Bool {
+        getxattr(url.path, heldMark, nil, 0, 0, 0) >= 0
     }
 
     /// Where the Screenshot app saves: the folder picked in its Options menu, or the Desktop.

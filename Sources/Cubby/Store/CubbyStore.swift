@@ -189,6 +189,7 @@ final class CubbyStore {
         guard let (thumbnail, moved) = result else { return }
 
         let kind: ItemKind = !isImage ? .file : ScreenshotCatcher.isScreenshot(destination) ? .screenshot : .image
+        if kind == .screenshot { ScreenshotCatcher.markHeld(destination) }
         let item = CubbyItem(id: id, kind: kind, text: name)
         item.fileName = name
         item.fileSize = size
@@ -396,7 +397,8 @@ final class CubbyStore {
         context.delete(item)
     }
 
-    /// Images added before Cubby told screenshots apart get their own tab too.
+    /// Images added before Cubby told screenshots apart get their own tab too, and every
+    /// screenshot carries Cubby's mark.
     private func sortOutScreenshots() {
         let imageRaw = ItemKind.image.rawValue
         let images = (try? context.fetch(FetchDescriptor<CubbyItem>(predicate: #Predicate { $0.kindRaw == imageRaw }))) ?? []
@@ -407,6 +409,13 @@ final class CubbyStore {
             changed = true
         }
         if changed { try? context.save() }
+        // Screenshots that came in before Cubby marked them get the mark now, so they
+        // aren't caught again once taken out.
+        let shotRaw = ItemKind.screenshot.rawValue
+        let shots = (try? context.fetch(FetchDescriptor<CubbyItem>(predicate: #Predicate { $0.kindRaw == shotRaw }))) ?? []
+        for url in shots.compactMap(\.fileURL) where !ScreenshotCatcher.hasBeenInCubby(url) {
+            ScreenshotCatcher.markHeld(url)
+        }
     }
 
     /// Cleans up file folders whose item no longer exists, e.g. after a crash. They might
