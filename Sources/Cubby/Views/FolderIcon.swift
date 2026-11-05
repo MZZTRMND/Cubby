@@ -80,6 +80,12 @@ struct FolderIcon: View {
                 .frame(width: Self.width * scale, height: Self.frontHeight * scale)
                 // Clear glass by default, so the items and page show through more.
                 .glassSurface(front, glass: style.frontGlass)
+                // The face from the app icon, awake while you hover. The eyes sit in
+                // the middle of the front and look around from there.
+                .overlay {
+                    FolderEyes(isAwake: isOpen, scale: scale)
+                        .offset(y: 4 * scale)
+                }
                 .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(Self.space)).minY }) { onFrontTop($0) }
         }
         // Room above the back for the items to slide into.
