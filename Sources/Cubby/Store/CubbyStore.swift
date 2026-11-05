@@ -443,7 +443,7 @@ final class CubbyStore {
     /// Files leave the cubby like they'd leave a folder; links and text are copied.
     func movesOut(_ item: CubbyItem) -> Bool { item.fileURL != nil }
 
-    /// A drag from the cubby ended. A file delivered anywhere outside the cubby leaves it
+    /// A drag from the cubby ended. A file delivered (moved, not ⌥-copied) outside leaves it
     /// the moment it's dropped. Finder finishes moving the file a moment later; if the
     /// receiver copied it instead, the cubby's leftover copy is cleaned up once the copy
     /// has had time to finish.

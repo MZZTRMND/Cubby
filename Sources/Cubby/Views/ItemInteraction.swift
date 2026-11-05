@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Clicks, right-clicks and drags on an item in the open cubby, handled by AppKit. The
 /// drag puts the files themselves on the pasteboard up front and only allows a move out
-/// of the app, so Finder takes them the moment you let go.
+/// of the app (a copy while ⌥ is held), so Finder takes them the moment you let go.
 struct ItemInteraction: NSViewRepresentable {
     /// One item in a drag: what goes on the pasteboard and how it looks.
     struct Piece {
@@ -18,6 +18,7 @@ struct ItemInteraction: NSViewRepresentable {
     let menu: () -> NSMenu
     /// A click, with its modifier keys and click count (2 for a double-click).
     let onClick: (_ modifiers: NSEvent.ModifierFlags, _ clickCount: Int) -> Void
+    /// The drag ended; true when the files left the cubby (moved, not copied).
     let onDragEnd: (_ delivered: Bool) -> Void
 
     func makeNSView(context: Context) -> InteractionView { InteractionView() }
@@ -81,21 +82,18 @@ struct ItemInteraction: NSViewRepresentable {
 
         func draggingSession(_ session: NSDraggingSession,
                              sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-            // Inside the cubby anything goes (it ignores its own items); outside, files
-            // can only be moved.
-            if context == .withinApplication { return [.copy, .move, .generic] }
-            return movesOut ? .move : .copy
+            ItemDragSource.operationMask(for: context, movesOut: movesOut)
         }
 
         func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
                              operation: NSDragOperation) {
-            interaction?.onDragEnd(!operation.isEmpty)
+            interaction?.onDragEnd(ItemDragSource.leftCubby(operation))
         }
     }
 }
 
 /// The source for a drag that isn't started from an item in the card, such as taking
-/// everything out of the folder. Same rules: outside the app, files can only be moved.
+/// everything out of the folder. Same rules: outside the app, files move unless ⌥ copies.
 final class ItemDragSource: NSObject, NSDraggingSource {
     private let movesOut: Bool
     private let onEnd: (_ delivered: Bool) -> Void
@@ -107,13 +105,26 @@ final class ItemDragSource: NSObject, NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession,
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        if context == .withinApplication { return [.copy, .move, .generic] }
-        return movesOut ? .move : .copy
+        Self.operationMask(for: context, movesOut: movesOut)
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint,
                          operation: NSDragOperation) {
-        onEnd(!operation.isEmpty)
+        onEnd(Self.leftCubby(operation))
+    }
+
+    /// Inside the cubby anything goes (it ignores its own items). Outside, files move,
+    /// or are copied while ⌥ is held, as in Finder; AppKit asks again whenever the
+    /// modifier keys change, so the pointer's green + comes and goes with ⌥.
+    static func operationMask(for context: NSDraggingContext, movesOut: Bool) -> NSDragOperation {
+        if context == .withinApplication { return [.copy, .move, .generic] }
+        guard movesOut else { return .copy }
+        return NSEvent.modifierFlags.contains(.option) ? .copy : .move
+    }
+
+    /// Whether the dragged files left the cubby: dropped somewhere, and not as a copy.
+    static func leftCubby(_ operation: NSDragOperation) -> Bool {
+        !operation.isEmpty && !operation.contains(.copy)
     }
 }
 
