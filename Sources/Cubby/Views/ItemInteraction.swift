@@ -16,7 +16,8 @@ struct ItemInteraction: NSViewRepresentable {
     let drag: () -> (pieces: [Piece], movesOut: Bool)
     /// Right-click. The item can update the selection before building the menu.
     let menu: () -> NSMenu
-    let onClick: (NSEvent.ModifierFlags) -> Void
+    /// A click, with its modifier keys and click count (2 for a double-click).
+    let onClick: (_ modifiers: NSEvent.ModifierFlags, _ clickCount: Int) -> Void
     let onDragEnd: (_ delivered: Bool) -> Void
 
     func makeNSView(context: Context) -> InteractionView { InteractionView() }
@@ -62,9 +63,16 @@ struct ItemInteraction: NSViewRepresentable {
             session.draggingFormation = .stack
         }
 
+        /// The item that got the last click. AppKit counts quick clicks on two different
+        /// items as a double-click, so a second click only counts as one on the same item.
+        private static weak var lastClicked: InteractionView?
+
         override func mouseUp(with event: NSEvent) {
             if let mouseDown, !isDragging {
-                interaction?.onClick(mouseDown.modifierFlags.intersection(.deviceIndependentFlagsMask))
+                let clickCount = Self.lastClicked === self ? mouseDown.clickCount : 1
+                Self.lastClicked = self
+                interaction?.onClick(mouseDown.modifierFlags.intersection(.deviceIndependentFlagsMask),
+                                     clickCount)
             }
             mouseDown = nil
         }

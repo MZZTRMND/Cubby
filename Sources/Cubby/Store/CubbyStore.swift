@@ -471,12 +471,14 @@ final class CubbyStore {
 
     // MARK: - Selection
 
-    /// ⌘-click adds or removes one item; ⇧-click adds everything between the last
+    /// ⌘-click adds or removes one item; ⇧-click selects everything between the last
     /// picked item and this one, in grid order.
     func select(_ id: UUID, extending: Bool, in order: [UUID]) {
         if extending, let anchor = selectionAnchor,
            let from = order.firstIndex(of: anchor), let to = order.firstIndex(of: id) {
-            selection.formUnion(order[min(from, to)...max(from, to)])
+            // As in Finder: everything from the anchor to here, keeping the anchor.
+            selection = Set(order[min(from, to)...max(from, to)])
+            cursorID = id
             return
         }
         if selection.remove(id) == nil { selection.insert(id) }

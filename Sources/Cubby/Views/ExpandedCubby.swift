@@ -45,9 +45,15 @@ struct ExpandedCubby: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id) }
             }
             .scrollIndicators(.never)
-            // Clicking between items clears the selection.
+            // Clicking between items clears the selection. This tap also fires for clicks
+            // on an item (it sits on the scroll view around them), before the item sees
+            // the click, and wiping the selection there broke ⇧- and ⌘-click; so it only
+            // counts when the pointer isn't over an item.
             .contentShape(Rectangle())
-            .onTapGesture { store.clearSelection() }
+            .onTapGesture {
+                guard store.hoveredItemID == nil else { return }
+                store.clearSelection()
+            }
             .overlay {
                 if items.isEmpty {
                     emptyState
@@ -341,7 +347,7 @@ private struct KindTabs: View {
     }
 }
 
-/// An item in the grid: its preview with its name underneath. Click to open or copy,
+/// An item in the grid: its preview with its name underneath. Click to select, double-click to open or copy,
 /// right-click for more, drag to move it out.
 private struct GridItemView: View {
     let item: CubbyItem
@@ -388,7 +394,7 @@ private struct GridItemView: View {
             ItemInteraction(
                 drag: startDrag,
                 menu: { rightClicked(); return menu },
-                onClick: click,
+                onClick: { click($0, clickCount: $1) },
                 onDragEnd: { store.dragEnded(Array(store.draggedItemIDs), delivered: $0) }
             )
         }
@@ -551,13 +557,16 @@ private struct GridItemView: View {
         return menuItem
     }
 
-    /// A plain click opens or copies; ⌘ or ⇧ picks the item instead.
-    private func click(_ modifiers: NSEvent.ModifierFlags) {
-        if modifiers.contains(.command) || modifiers.contains(.shift) {
+    /// As on the Desktop: a click selects just this item, ⌘-click adds or removes it,
+    /// ⇧-click selects a range, and a double-click opens or copies it.
+    private func click(_ modifiers: NSEvent.ModifierFlags, clickCount: Int) {
+        if clickCount >= 2 {
+            activate()
+        } else if modifiers.contains(.command) || modifiers.contains(.shift) {
             select(modifiers.contains(.shift))
         } else {
             store.clearSelection()
-            activate()
+            select(false)
         }
     }
 
