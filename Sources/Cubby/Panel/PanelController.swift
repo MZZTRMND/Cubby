@@ -188,7 +188,7 @@ final class PanelController {
     }
 
     /// Keys for the open card: the arrows move the selection (⇧ extends it), Return
-    /// or ⌘↓ opens it, Space toggles Quick Look, as in Finder, ⌘A selects everything,
+    /// or ⌘↓ opens it, Space or ⌘Y toggles Quick Look, as in Finder, ⌘A selects everything,
     /// Delete or ⌘Delete moves it to the Bin, and ⌘Z / ⇧⌘Z undo and redo.
     private func installKeyMonitor() {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
@@ -210,7 +210,7 @@ final class PanelController {
             }
             if self.typeToFind(event, flags: flags) { return nil }
             switch (event.keyCode, flags) {
-            case (49, []): // Space
+            case (49, []), (16, .command): // Space, ⌘Y
                 if quickLook.isShown { quickLook.close() } else { self.refreshQuickLook() }
             case (36, []), (76, []), (125, .command): // Return, Enter, ⌘↓
                 guard event.window === self.panel else { return event }

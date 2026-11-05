@@ -467,7 +467,11 @@ private struct GridItemView: View {
             ? ActionMenuItem("Compress \(files.count) Items") { store.compress(files) }
             : ActionMenuItem("Compress \u{201C}\(url.lastPathComponent)\u{201D}") { store.compress(item) })
         menu.addItem(ActionMenuItem("Duplicate") { store.duplicate(item) })
-        menu.addItem(ActionMenuItem("Quick Look") { QuickLook.shared.show(url) })
+        // With several selected, Quick Look shows them all, starting with this one.
+        let previews = [url] + files.compactMap(\.fileURL).filter { $0 != url }
+        menu.addItem(ActionMenuItem(previews.count > 1 ? "Quick Look \(previews.count) Items" : "Quick Look") {
+            QuickLook.shared.show(previews)
+        })
         if let quickActions = quickActionsMenu { menu.addItem(quickActions) }
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Copy") { copy() })
