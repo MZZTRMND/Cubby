@@ -43,6 +43,6 @@ macOS 26 (Tahoe) or later.
 Scripts/make-app.sh
 ```
 
-This builds `Cubby.app` in the project folder. Move it to Applications and open it.
+This builds `Cubby.app` in `build.noindex/` (a folder Spotlight skips). Move it to Applications and open it, or run `Scripts/make-app.sh --install` to do that for you.
 
-`Scripts/make-app.sh --test` builds `Cubby-Test.app` instead, which keeps its items separate from the real app.
+`Scripts/make-app.sh --test` builds `build.noindex/Cubby-Test.app` instead, which keeps its items separate from the real app.

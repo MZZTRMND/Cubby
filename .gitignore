@@ -1,4 +1,5 @@
 .build/
+build.noindex/
 *.app
 .DS_Store
 *.zip
