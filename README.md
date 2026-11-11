@@ -5,11 +5,11 @@ A little folder that lives on your Mac's desktop. Drop in files, images, screens
 <p align="center">
   <img src="docs/folder-v3.png" width="260" alt="Cubby resting on the desktop as a frosted glass folder">
   &nbsp;&nbsp;
-  <img src="docs/open-v2.png" width="380" alt="Cubby opened, showing a grid of images and files with tabs">
+  <img src="docs/open-v3.png" width="380" alt="Cubby opened, showing a grid of images and files with tabs">
 </p>
 
 <p align="center">
-  <img src="docs/cubby-demo-dark.gif" width="560" alt="Cubby in dark mode: its eyes follow the pointer, a shaken drag brings it over, and the open card finds items as you type">
+  <img src="docs/cubby-in-action.gif" width="480" alt="Cubby on the desktop: hovering wakes its eyes, which follow the pointer">
 </p>
 
 ## What it does
