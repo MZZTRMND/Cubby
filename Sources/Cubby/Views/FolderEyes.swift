@@ -149,7 +149,7 @@ final class EyeTracker {
         guard let anchor, let window = anchor.window else { return }
         let center = window.convertPoint(toScreen: anchor.convert(NSPoint(x: anchor.bounds.midX, y: anchor.bounds.midY),
                                                                    to: nil))
-        let mouse = NSEvent.mouseLocation
+        let mouse = Pointer.location
         let dx = mouse.x - center.x
         let dy = mouse.y - center.y
         let distance = hypot(dx, dy)

@@ -3,3 +3,7 @@ build.noindex/
 *.app
 .DS_Store
 *.zip
+promo/node_modules/
+promo/out/
+promo/footage/
+promo/public/demo.mov

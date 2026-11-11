@@ -43,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store: CubbyStore
     let panel: PanelController
     let screenshots = ScreenshotCatcher()
+    private var director: DemoDirector?
 
     override init() {
         let config = ModelConfiguration(url: AppPaths.store)
@@ -58,6 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel.showAtLaunch()
+        if Demo.isOn {
+            // Real screenshots stay out of the demo.
+            director = DemoDirector(store: store, panel: panel)
+            director?.start()
+            return
+        }
         screenshots.onCatch = { [store, panel] url in
             store.addScreenshot(url)
             panel.caught()
