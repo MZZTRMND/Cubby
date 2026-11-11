@@ -151,12 +151,6 @@ final class PanelController {
     }
 
     private func applyPinning() {
-        if Demo.isOn {
-            // Above the demo's stage, which covers everything else.
-            panel.level = Demo.panelLevel
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-            return
-        }
         panel.level = isPinnedOnTop ? .floating : .normal
         panel.collectionBehavior = isPinnedOnTop ? [.canJoinAllSpaces, .fullScreenAuxiliary] : []
     }
@@ -515,13 +509,13 @@ final class PanelController {
 
     private func raiseForDrag() {
         lowerTask?.cancel()
-        let mouse = Pointer.location
+        let mouse = NSEvent.mouseLocation
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? screen
         else { return }
         isRaisedForDrag = true
         dimmer.fadeIn(on: screen)
         // Just above the veil, and on whichever desktop you're on.
-        panel.level = Demo.isOn ? Demo.panelLevel : NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.orderFrontRegardless()
         pop(to: Self.frame(of: panel.frame.size, beside: mouse, in: screen.visibleFrame),
@@ -561,34 +555,6 @@ final class PanelController {
             withAnimation(appear) { self.isPoppedAway = false }
         }
     }
-
-    // MARK: - Demo
-
-    /// Puts the folder at `center` on screen for the demo, without saving it as its spot.
-    func demoPlace(center: NSPoint) {
-        guard let visible = screen?.visibleFrame else { return }
-        position = CGPoint(x: (center.x - visible.minX) / visible.width, y: (center.y - visible.minY) / visible.height)
-        placeFolder()
-    }
-
-    /// The panel's window on screen.
-    var demoFrame: NSRect { panel.frame }
-
-    /// The folder opening as if hovered, or settling again.
-    func demoHover(_ isOn: Bool) {
-        if isOn {
-            collapseTask?.cancel()
-            if mode == .resting { withAnimation(Self.animation) { mode = .dropTarget } }
-        } else if mode == .dropTarget {
-            collapse()
-        }
-    }
-
-    /// The folder coming forward next to the demo's pointer, as after a shake.
-    func demoSummon() { raiseForDrag() }
-
-    /// And going back to its spot once the drag is over.
-    func demoLower() { lowerAfterDrag() }
 
     // MARK: - Layout
 
