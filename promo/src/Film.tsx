@@ -15,7 +15,7 @@ type Cam = [at: number, x: number, y: number, w: number];
 
 /** A shot of the recording: a stretch of it, at `rate`, seen through a camera that moves
  *  between `cams` (centre and visible width, in points) as the shot plays. */
-export const Footage: React.FC<{from: number; rate?: number; cams: Cam[]; dur: number}> = ({from, rate = 1, cams, dur}) => {
+export const Footage: React.FC<{from: number; rate?: number; cams: Cam[]; dur: number; src?: string}> = ({from, rate = 1, cams, dur, src = SRC}) => {
   const f = useCurrentFrame();
   const {width, height} = useVideoConfig();
   const p = f / dur;
@@ -34,7 +34,7 @@ export const Footage: React.FC<{from: number; rate?: number; cams: Cam[]; dur: n
   return (
     <AbsoluteFill style={{overflow: 'hidden', background: '#000'}}>
       <OffthreadVideo
-        src={SRC}
+        src={src}
         muted
         trimBefore={Math.round((from + LEAD) * 60)}
         playbackRate={rate}

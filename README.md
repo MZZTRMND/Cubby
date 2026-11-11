@@ -9,7 +9,7 @@ A little folder that lives on your Mac's desktop. Drop in files, images, screens
 </p>
 
 <p align="center">
-  <img src="docs/cubby-demo.gif" width="560" alt="Cubby on the desktop: its eyes follow the pointer, files dropped in slide inside, and a click opens it into a card">
+  <img src="docs/cubby-demo-dark.gif" width="560" alt="Cubby in dark mode: its eyes follow the pointer, a shaken drag brings it over, and the open card finds items as you type">
 </p>
 
 ## What it does

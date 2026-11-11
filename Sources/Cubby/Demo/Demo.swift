@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 /// The scripted demo, for recording the promo video. It only runs in the test build,
 /// launched with `--demo` (see Scripts/record-demo.sh), and keeps its items in a folder
@@ -6,6 +7,10 @@ import AppKit
 enum Demo {
     nonisolated static let isOn = ProcessInfo.processInfo.arguments.contains("--demo")
         && Bundle.main.bundleIdentifier == "com.cubby.app.test"
+
+    /// Played on a dark stage, with the app in dark mode (`-demoDark YES`).
+    nonisolated static let isDark = UserDefaults.standard.bool(forKey: "demoDark")
+    nonisolated static var scheme: ColorScheme { isDark ? .dark : .light }
 
     /// The stage covers the screen at `.floating`; the folder sits above it, and the
     /// demo's pointer above everything.

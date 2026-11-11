@@ -50,11 +50,7 @@ struct DemoBackdrop: View {
                 [0, 0], [0.5, 0], [1, 0],
                 [0, 0.5], [0.55, 0.45], [1, 0.5],
                 [0, 1], [0.5, 1], [1, 1],
-            ], colors: [
-                Color(red: 0.16, green: 0.32, blue: 0.86), Color(red: 0.42, green: 0.3, blue: 0.9), Color(red: 0.86, green: 0.36, blue: 0.7),
-                Color(red: 0.26, green: 0.5, blue: 0.98), Color(red: 0.66, green: 0.56, blue: 0.98), Color(red: 1.0, green: 0.5, blue: 0.52),
-                Color(red: 0.36, green: 0.26, blue: 0.78), Color(red: 0.9, green: 0.42, blue: 0.62), Color(red: 1.0, green: 0.64, blue: 0.36),
-            ])
+            ], colors: Demo.isDark ? Self.night : Self.day)
             .ignoresSafeArea()
             ForEach(state.icons) { icon in
                 DeskIconView(icon: icon, isSelected: state.selectedIcon == icon.id)
@@ -65,6 +61,18 @@ struct DemoBackdrop: View {
             }
         }
     }
+
+    private static let night: [Color] = [
+        Color(red: 0.04, green: 0.06, blue: 0.2), Color(red: 0.12, green: 0.07, blue: 0.3), Color(red: 0.32, green: 0.08, blue: 0.32),
+        Color(red: 0.07, green: 0.16, blue: 0.42), Color(red: 0.22, green: 0.16, blue: 0.48), Color(red: 0.5, green: 0.12, blue: 0.36),
+        Color(red: 0.05, green: 0.04, blue: 0.16), Color(red: 0.28, green: 0.08, blue: 0.3), Color(red: 0.55, green: 0.2, blue: 0.2),
+    ]
+
+    private static let day: [Color] = [
+        Color(red: 0.16, green: 0.32, blue: 0.86), Color(red: 0.42, green: 0.3, blue: 0.9), Color(red: 0.86, green: 0.36, blue: 0.7),
+        Color(red: 0.26, green: 0.5, blue: 0.98), Color(red: 0.66, green: 0.56, blue: 0.98), Color(red: 1.0, green: 0.5, blue: 0.52),
+        Color(red: 0.36, green: 0.26, blue: 0.78), Color(red: 0.9, green: 0.42, blue: 0.62), Color(red: 1.0, green: 0.64, blue: 0.36),
+    ]
 }
 
 /// A file on the desktop, as Finder draws it: the icon and its name under it.
@@ -201,7 +209,7 @@ struct MoodboardContent: View {
         .padding(.bottom, 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .windowBackgroundColor))
-        .environment(\.colorScheme, .light)
+        .environment(\.colorScheme, Demo.scheme)
     }
 }
 
@@ -247,7 +255,7 @@ struct BrowserContent: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(nsColor: .textBackgroundColor))
-        .environment(\.colorScheme, .light)
+        .environment(\.colorScheme, Demo.scheme)
     }
 
     /// The article's text, with the sentence picked to drag highlighted as selections are.
@@ -289,7 +297,7 @@ struct NotesContent: View {
         .padding(.horizontal, 32)
         .padding(.top, 56)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(red: 1, green: 0.99, blue: 0.95))
-        .environment(\.colorScheme, .light)
+        .background(Demo.isDark ? Color(red: 0.17, green: 0.16, blue: 0.15) : Color(red: 1, green: 0.99, blue: 0.95))
+        .environment(\.colorScheme, Demo.scheme)
     }
 }

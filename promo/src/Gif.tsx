@@ -1,15 +1,21 @@
 import React from 'react';
-import {AbsoluteFill, Sequence, useCurrentFrame} from 'remotion';
-import {Footage, M} from './Film';
+import {AbsoluteFill, Sequence, staticFile, useCurrentFrame} from 'remotion';
+import {Footage} from './Film';
 import {tween} from './lib';
 
-// A short loop of the real app for the README: the folder wakes up, things go in, the
-// card opens. The camera holds still, which keeps the file small.
-const FADE = 12;
-const SHOTS: {from: number; seconds: number; rate: number; cams: [number, number, number, number][]}[] = [
-  {from: M.meet + 1.0, seconds: 4.2, rate: 1.2, cams: [[0, 1280, 800, 700], [1, 1280, 800, 700]]},
-  {from: M.takes, seconds: 5.2, rate: 1.7, cams: [[0, 1280, 790, 1250], [1, 1280, 790, 1250]]},
-  {from: M.card + 1.6, seconds: 6.2, rate: 1.6, cams: [[0, 1055, 800, 820], [1, 1055, 800, 820]]},
+// A short loop of the real app in dark mode for the README: the folder wakes up, a drag
+// gets shaken and the folder pops up for it, then the card opens and finds by typing.
+// The camera holds still in each shot, which keeps the file small.
+// Recorded with `Scripts/record-demo.sh --dark`; scene times from demo-dark-markers.json.
+const SRC = staticFile('demo-dark.mov');
+const M = {meet: 0, summon: 27.31, card: 43.92};
+const FADE = 10;
+type Cam = [number, number, number, number];
+const SHOTS: {from: number; seconds: number; rate: number; cam: Cam}[] = [
+  {from: M.meet + 1.0, seconds: 4.2, rate: 1.2, cam: [0, 1280, 800, 700]},
+  {from: M.summon + 0.7, seconds: 5.0, rate: 1.25, cam: [0, 1450, 740, 1150]},
+  {from: M.card + 1.2, seconds: 3.0, rate: 1.2, cam: [0, 1055, 800, 820]},
+  {from: M.card + 9.2, seconds: 3.0, rate: 1, cam: [0, 1055, 800, 820]},
 ];
 const durs = SHOTS.map((s) => Math.round((s.seconds / s.rate) * 60));
 const starts = durs.reduce<number[]>((acc, _, i) => [...acc, i === 0 ? 0 : acc[i - 1] + durs[i - 1] - FADE], []);
@@ -26,12 +32,12 @@ export const Gif: React.FC = () => (
   <AbsoluteFill style={{background: '#000'}}>
     {/* Under everything: the first frame, for the last shot to fade into. */}
     <Sequence from={GIF_FRAMES - FADE} durationInFrames={FADE}>
-      <Footage from={SHOTS[0].from} rate={0.0001} cams={SHOTS[0].cams} dur={durs[0]} />
+      <Footage src={SRC} from={SHOTS[0].from} rate={0.0001} cams={[SHOTS[0].cam]} dur={durs[0]} />
     </Sequence>
     {SHOTS.map((s, i) => (
       <Sequence key={i} from={starts[i]} durationInFrames={durs[i]}>
         <Fade dur={durs[i]} first={i === 0} last={i === SHOTS.length - 1}>
-          <Footage from={s.from} rate={s.rate} cams={s.cams} dur={durs[i]} />
+          <Footage src={SRC} from={s.from} rate={s.rate} cams={[s.cam]} dur={durs[i]} />
         </Fade>
       </Sequence>
     ))}
